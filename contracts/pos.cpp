@@ -181,7 +181,7 @@ CONTRACT pos : public eosio::contract {
     auto itemidx = _stockitems.get_index<name("soldon")>();
     auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
 
-    while(count-- > 0 && item_itr->get_sold_on() <= irrev_time) {
+    while(count-- > 0 && item_itr != itemidx.end() && item_itr->get_sold_on() <= irrev_time) {
       auto& sku = _skus.get(item_itr->skuid, "This should never happen 5");
       asset quantity = sku.price;
 
@@ -193,7 +193,8 @@ CONTRACT pos : public eosio::contract {
       }
 
       send_payment(seller, extended_asset{quantity, sku.tkcontract},
-                   string("{\"sku\":\"") + sku.sku + "\",\"itemid\":\"" + std::to_string(item_itr->id) +
+                   string("{\"sku\":\"") + sku.sku + "\",\"item_id\":\"" +
+                   std::to_string(item_itr->id) +
                    "\",\"buyer\":\"" + item_itr->buyer.to_string() + "\"}");
       action {
         permission_level{_self, name("active")},
@@ -206,11 +207,6 @@ CONTRACT pos : public eosio::contract {
     }
     check(done_something, "No sold items available for claims");
   }
-
-
-
-
-
 
 
   // incoming payment. Memo must match an SKU
@@ -272,6 +268,8 @@ CONTRACT pos : public eosio::contract {
             name("payreceipt"),
             receipt_abi {.item_id=item_id, .seller=seller, .sku=hashitr->sku, .buyer=from }
       }.send();
+
+      inc_uint_prop(name("purchases"));
     }
   }
 
