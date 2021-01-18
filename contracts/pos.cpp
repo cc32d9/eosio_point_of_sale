@@ -181,7 +181,7 @@ CONTRACT pos : public eosio::contract {
     auto itemidx = _stockitems.get_index<name("soldon")>();
     auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
 
-    while(count > 0 && item_itr->get_sold_on() <= irrev_time) {
+    while(count-- > 0 && item_itr->get_sold_on() <= irrev_time) {
       auto& sku = _skus.get(item_itr->skuid, "This should never happen 5");
       asset quantity = sku.price;
 
@@ -204,7 +204,7 @@ CONTRACT pos : public eosio::contract {
 
       item_itr = itemidx.erase(item_itr);
     }
-    check(done_something, "Nothing to do");
+    check(done_something, "No sold items available for claims");
   }
 
 
