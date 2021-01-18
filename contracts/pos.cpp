@@ -1,5 +1,5 @@
 /*
-  Copyright 202` cc32d9@gmail.com
+  Copyright 2021 cc32d9@gmail.com
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -21,11 +21,10 @@
 #include <eosio/asset.hpp>
 #include <eosio/crypto.hpp>
 #include <eosio/time.hpp>
-#include <eosio/string.hpp>
 
 
 using namespace eosio;
-using eosio::string;
+using std::string;
 using std::vector;
 
 CONTRACT pos : public eosio::contract {
@@ -58,10 +57,18 @@ CONTRACT pos : public eosio::contract {
   {
     require_auth(seller);
 
-    checksum256 hash = sha256(sku.cbegin(), sku.size());
+    checksum256 hash = sha256(sku.data(), sku.size());
     skus _skus(_self, 0);
     auto hashidx = _skus.get_index<name("skuhash")>();
     check( hashidx.find(hash) == hashidx.end(), "An SKU with this name already exists");
+
+    // validate that such token exists
+    {
+      stats_table statstbl(tkcontract, price.symbol.code().raw());
+      auto statsitr = statstbl.find(price.symbol.code().raw());
+      check(statsitr != statstbl.end(), "This currency symbol does not exist");
+      check(statsitr->supply.symbol.precision() == price.symbol.precision(), "Wrong currency precision");
+    }
 
     inc_uint_prop(name("lastskuid"));
     uint64_t skuid = get_uint_prop(name("lastskuid"));
@@ -86,12 +93,12 @@ CONTRACT pos : public eosio::contract {
     if( cntrs_itr == _sellercntrs.end() ) {
       _sellercntrs.emplace(seller, [&]( auto& row ) {
                                      row.seller = seller;
-                                     row.c_skus = 1;
+                                     row.skus = 1;
                                    });
     }
     else {
       _sellercntrs.modify( *cntrs_itr, seller, [&]( auto& row ) {
-                                                 row.c_skus++;
+                                                 row.skus++;
                                                });
     }
 
@@ -132,7 +139,7 @@ CONTRACT pos : public eosio::contract {
 
   ACTION addstock(string sku, uint32_t count)
   {
-    checksum256 hash = sha256(sku.cbegin(), sku.size());
+    checksum256 hash = sha256(sku.data(), sku.size());
     skus _skus(_self, 0);
     auto hashidx = _skus.get_index<name("skuhash")>();
     auto hashitr = hashidx.find(hash);
@@ -143,8 +150,64 @@ CONTRACT pos : public eosio::contract {
   }
 
 
+  // Oracle delivers last irreversible block and its timestamp.
+  ACTION orairrev(uint32_t irrev_block, time_point irrev_timestamp)
+  {
+    name oracle = get_name_prop(name("oracleacc"));
+    check(oracle.value != 0, "oracle account is not set");
+    require_auth(oracle);
+
+    set_uint_prop(name("irrevblock"), irrev_block);
+    set_uint_prop(name("irrevtime"), irrev_timestamp.elapsed.count());
+  }
 
 
+  // seller claims the payments after they become irreversible
+  ACTION claim(name seller, uint32_t count)
+  {
+    require_auth(seller);
+    sellercntrs _sellercntrs(_self, 0);
+    check(_sellercntrs.find(seller.value) != _sellercntrs.end(), "Unknown seller");
+
+    uint64_t feepermille = get_uint_prop(name("feepermille"));
+    name feeacc = get_name_prop(name("feeacc"));
+
+    uint64_t irrev_time = get_uint_prop(name("irrevtime"));    
+    bool done_something = false;
+
+    skus _skus(_self, 0);
+    
+    stockitems _stockitems(_self, seller.value);
+    auto itemidx = _stockitems.get_index<name("soldon")>();
+    auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
+    
+    while(count > 0 && item_itr->get_sold_on() <= irrev_time) {
+      auto& sku = _skus.get(item_itr->skuid, "This should never happen 5");
+      asset quantity = sku.price;
+      
+      if( feepermille > 0 && feeacc != name("") ) {
+        asset fee = quantity * feepermille / 1000;
+        quantity -= fee;
+        extended_asset xfee(fee, sku.tkcontract);
+        send_payment(feeacc, xfee, "fees");
+      }
+
+      send_payment(seller, extended_asset{quantity, sku.tkcontract},
+                   string("{\"sku\":\"") + sku.sku + "\",\"itemid\":\"" + std::to_string(item_itr->id) +
+                   "\",\"buyer\":\"" + item_itr->buyer.to_string() + "\"}");
+      action {
+        permission_level{_self, name("active")},
+          _self,
+            name("finalreceipt"),
+            receipt_abi {.item_id=item_itr->id, .seller=seller, .sku=sku.sku, .buyer=item_itr->buyer}
+      }.send();
+
+      item_itr = itemidx.erase(item_itr);
+    }
+    check(done_something, "Nothing to do");
+  }
+   
+    
 
 
 
@@ -154,7 +217,7 @@ CONTRACT pos : public eosio::contract {
 
   [[eosio::on_notify("*::transfer")]] void on_payment (name from, name to, asset quantity, string memo) {
     if(to == _self) {
-      checksum256 hash = sha256(memo.cbegin(), memo.size());
+      checksum256 hash = sha256(memo.data(), memo.size());
       skus _skus(_self, 0);
       auto hashidx = _skus.get_index<name("skuhash")>();
       auto hashitr = hashidx.find(hash);
@@ -165,35 +228,74 @@ CONTRACT pos : public eosio::contract {
             "Wrong amount or currency, expected: " + hashitr->price.to_string());
 
       uint64_t skuid = hashitr->id;
+      name seller = hashitr->seller;
 
-      stockitems _stockitems(_self, hashitr->seller.value);
+      stockitems _stockitems(_self, seller.value);
       auto itemidx = _stockitems.get_index<name("skuid")>();
       auto item_itr = itemidx.lower_bound(skuid);
       check(item_itr != itemidx.end(), "This SKU is sold out");
 
+      auto buyeridx = _stockitems.get_index<name("buyersku")>();
+      check(buyeridx.find(((uint128_t)from.value << 64)|(uint128_t)skuid) == buyeridx.end(),
+            "This buyer has purchased already this SKU. Wait for the seller to process the purchase");
+
+      uint64_t item_id = item_itr->id;
+      time_point now = current_time_point();
+      
       // mark the item as sold
       _stockitems.modify(*item_itr, same_payer, [&]( auto& row ) {
-                                                  row.sold_on = current_time_point();
+                                                  row.sold_on = now;
+                                                  row.buyer = from;
                                                   row.trxid = get_trxid();
                                                 });
 
       // update statistics
       sellercntrs _sellercntrs(_self, 0);
-      auto ctr_itr = _sellercntrs.find(hashitr->seller.value);
+      auto ctr_itr = _sellercntrs.find(seller.value);
       check( ctr_itr != _sellercntrs.end(), "This should never happen 3");
       _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
-                                                  row.c_items_onsale--;
+                                                  row.items_onsale--;
+                                                  row.last_sale = now;
                                                 });
 
       stockrows _stockrows(_self, 0);
       auto stock_itr = _stockrows.find(skuid);
       check(stock_itr != _stockrows.end(), "This should never happen 4");
       _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
-                                                  row.c_items_onsale--;
+                                                  row.items_onsale--;
+                                                  row.last_sale = now;
                                                 });
+
+      action {
+        permission_level{_self, name("active")},
+          _self,
+            name("payreceipt"),
+            receipt_abi {.item_id=item_id, .seller=seller, .sku=hashitr->sku, .buyer=from }
+      }.send();
     }
   }
 
+
+  // inline notifications
+  struct receipt_abi {
+    uint64_t       item_id;
+    name           seller;
+    string         sku;
+    name           buyer;
+  };
+
+  ACTION payreceipt(receipt_abi)
+  {
+    require_auth(_self);
+  }
+
+  ACTION finalreceipt(receipt_abi x)
+  {
+    require_auth(_self);
+    require_recipient(x.seller);
+  }
+  
+  
  private:
 
   // Stock keeping unit; scope=0
@@ -218,7 +320,8 @@ CONTRACT pos : public eosio::contract {
   // Stock count; scope=0
   struct [[eosio::table("stock")]] stockrow {
     uint64_t       skuid;
-    uint64_t       c_items_onsale = 0; // number of items available on sale
+    uint64_t       items_onsale = 0; // number of items available on sale
+    time_point     last_sale;
     auto primary_key()const { return skuid; }
   };
 
@@ -227,10 +330,11 @@ CONTRACT pos : public eosio::contract {
 
   // Seller counters; scope=0
   struct [[eosio::table("sellercntrs")]] sellercntr {
-    name       seller;
-    uint64_t   next_item_id = 1;
-    uint64_t   c_skus;  // number of SKUs on sale
-    uint64_t   c_items_onsale = 0; // number of items on sale
+    name           seller;
+    uint64_t       next_item_id = 1;
+    uint64_t       skus;  // number of SKUs on sale
+    uint64_t       items_onsale = 0; // number of items on sale
+    time_point     last_sale;
     auto primary_key()const { return seller.value; }
   };
 
@@ -254,16 +358,19 @@ CONTRACT pos : public eosio::contract {
     uint64_t        id;
     uint64_t        skuid;
     time_point      sold_on;
+    name            buyer;
     checksum256     trxid;
     auto primary_key()const { return id; }
     uint64_t get_skuid()const { return (sold_on.elapsed.count() == 0) ? skuid : 0; }
     uint64_t get_sold_on()const { return sold_on.elapsed.count(); }
+    uint128_t get_buyer_sku()const { return ((uint128_t)buyer.value << 64)|(uint128_t)skuid; }
   };
 
   typedef eosio::multi_index<
     name("stockitems"), stockitem,
     indexed_by<name("skuid"), const_mem_fun<stockitem, uint64_t, &stockitem::get_skuid>>,
-    indexed_by<name("soldon"), const_mem_fun<stockitem, uint64_t, &stockitem::get_sold_on>>
+    indexed_by<name("soldon"), const_mem_fun<stockitem, uint64_t, &stockitem::get_sold_on>>,
+    indexed_by<name("buyersku"), const_mem_fun<stockitem, uint128_t, &stockitem::get_buyer_sku>>
     > stockitems;
 
 
@@ -285,7 +392,7 @@ CONTRACT pos : public eosio::contract {
     }
 
     _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
-                                                row.c_items_onsale += count;
+                                                row.items_onsale += count;
                                                 row.next_item_id = itemid;
                                               });
 
@@ -293,7 +400,7 @@ CONTRACT pos : public eosio::contract {
     auto stock_itr = _stockrows.find(skuid);
     check(stock_itr != _stockrows.end(), "This should never happen 2");
     _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
-                                                row.c_items_onsale += count;
+                                                row.items_onsale += count;
                                               });
   }
 
