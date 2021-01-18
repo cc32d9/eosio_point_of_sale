@@ -172,19 +172,19 @@ CONTRACT pos : public eosio::contract {
     uint64_t feepermille = get_uint_prop(name("feepermille"));
     name feeacc = get_name_prop(name("feeacc"));
 
-    uint64_t irrev_time = get_uint_prop(name("irrevtime"));    
+    uint64_t irrev_time = get_uint_prop(name("irrevtime"));
     bool done_something = false;
 
     skus _skus(_self, 0);
-    
+
     stockitems _stockitems(_self, seller.value);
     auto itemidx = _stockitems.get_index<name("soldon")>();
     auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
-    
+
     while(count > 0 && item_itr->get_sold_on() <= irrev_time) {
       auto& sku = _skus.get(item_itr->skuid, "This should never happen 5");
       asset quantity = sku.price;
-      
+
       if( feepermille > 0 && feeacc != name("") ) {
         asset fee = quantity * feepermille / 1000;
         quantity -= fee;
@@ -206,8 +206,8 @@ CONTRACT pos : public eosio::contract {
     }
     check(done_something, "Nothing to do");
   }
-   
-    
+
+
 
 
 
@@ -241,7 +241,7 @@ CONTRACT pos : public eosio::contract {
 
       uint64_t item_id = item_itr->id;
       time_point now = current_time_point();
-      
+
       // mark the item as sold
       _stockitems.modify(*item_itr, same_payer, [&]( auto& row ) {
                                                   row.sold_on = now;
@@ -294,8 +294,8 @@ CONTRACT pos : public eosio::contract {
     require_auth(_self);
     require_recipient(x.seller);
   }
-  
-  
+
+
  private:
 
   // Stock keeping unit; scope=0
@@ -541,10 +541,7 @@ CONTRACT pos : public eosio::contract {
         permission_level{_self, name("active")},
           x.contract,
             name("transfer"),
-            transfer_args  {
-            .from=_self, .to=recipient,
-                              .quantity=x.quantity, .memo=memo
-                              }
+            transfer_args {.from=_self, .to=recipient, .quantity=x.quantity, .memo=memo}
       }.send();
   }
 
