@@ -78,7 +78,6 @@ CONTRACT pos : public eosio::contract {
                             row.seller = seller;
                             row.sku = sku;
                             row.description = description;
-                            row.skuhash = hash;
                             row.tkcontract = tkcontract;
                             row.price = price;
                           });
@@ -229,7 +228,7 @@ CONTRACT pos : public eosio::contract {
       stockitems _stockitems(_self, seller.value);
       auto itemidx = _stockitems.get_index<name("skuid")>();
       auto item_itr = itemidx.lower_bound(skuid);
-      check(item_itr != itemidx.end(), "This SKU is sold out");
+      check(item_itr->skuid == skuid && item_itr != itemidx.end(), "This SKU is sold out");
 
       auto buyeridx = _stockitems.get_index<name("buyersku")>();
       check(buyeridx.find(((uint128_t)from.value << 64)|(uint128_t)skuid) == buyeridx.end(),
@@ -302,11 +301,10 @@ CONTRACT pos : public eosio::contract {
     name           seller;
     string         sku;
     string         description;
-    checksum256    skuhash;
     name           tkcontract;
     asset          price;
     auto primary_key()const { return id; }
-    checksum256 get_skuhash() const { return skuhash; }
+    checksum256 get_skuhash() const { return sha256(sku.data(), sku.size()); }
   };
 
   typedef eosio::multi_index<

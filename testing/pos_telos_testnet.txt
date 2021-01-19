@@ -1,0 +1,9 @@
+alias tTcleos='cleos -v -u https://boid-telos-testnet.animusystems.com'
+
+tTcleos set contract saleterminal . pos.wasm pos.abi
+tTcleos set account permission --add-code saleterminal active
+tTcleos push action saleterminal setoracle '["payoutadmin1"]' -p saleterminal
+tTcleos push action saleterminal setfee '["payoutfees11", "5"]' -p saleterminal
+
+
+
