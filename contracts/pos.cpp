@@ -156,8 +156,14 @@ CONTRACT pos : public eosio::contract {
     check(oracle.value != 0, "oracle account is not set");
     require_auth(oracle);
 
+    uint64_t old_irrev = get_uint_prop(name("irrevtime"));
+    uint64_t new_irrev = irrev_timestamp.elapsed.count();
+    
+    check(get_uint_prop(name("lastsale")) > old_irrev, "No new sales");
+    check(new_irrev > old_irrev, "already registered this timestamp");
+    
     set_uint_prop(name("irrevblock"), irrev_block);
-    set_uint_prop(name("irrevtime"), irrev_timestamp.elapsed.count());
+    set_uint_prop(name("irrevtime"), new_irrev);
   }
 
 
@@ -166,7 +172,8 @@ CONTRACT pos : public eosio::contract {
   {
     require_auth(seller);
     sellercntrs _sellercntrs(_self, 0);
-    check(_sellercntrs.find(seller.value) != _sellercntrs.end(), "Unknown seller");
+    auto ctr_itr = _sellercntrs.find(seller.value);
+    check(ctr_itr != _sellercntrs.end(), "Unknown seller");
 
     uint64_t feepermille = get_uint_prop(name("feepermille"));
     name feeacc = get_name_prop(name("feeacc"));
@@ -175,6 +182,7 @@ CONTRACT pos : public eosio::contract {
     bool done_something = false;
 
     skus _skus(_self, 0);
+    stockrows _stockrows(_self, 0);
 
     stockitems _stockitems(_self, seller.value);
     auto itemidx = _stockitems.get_index<name("soldon")>();
@@ -201,7 +209,18 @@ CONTRACT pos : public eosio::contract {
             name("finalreceipt"),
             receipt_abi {.item_id=item_itr->id, .seller=seller, .sku=sku.sku, .buyer=item_itr->buyer}
       }.send();
-
+      
+      check(ctr_itr->items_onsale > 0, "This should never happen 6");
+      _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
+                                                  row.items_onsale--;
+                                                });
+      
+      auto stock_itr = _stockrows.find(sku.id);
+      check(stock_itr != _stockrows.end(), "This should never happen 7");
+      check(stock_itr->items_onsale > 0, "This should never happen 8");
+      _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
+                                                  row.items_onsale--;
+                                                });
       item_itr = itemidx.erase(item_itr);
     }
     check(done_something, "No sold items available for claims");
@@ -228,7 +247,7 @@ CONTRACT pos : public eosio::contract {
       stockitems _stockitems(_self, seller.value);
       auto itemidx = _stockitems.get_index<name("skuid")>();
       auto item_itr = itemidx.lower_bound(skuid);
-      check(item_itr->skuid == skuid && item_itr != itemidx.end(), "This SKU is sold out");
+      check(item_itr != itemidx.end() && item_itr->skuid == skuid, "This SKU is sold out");
 
       auto buyeridx = _stockitems.get_index<name("buyersku")>();
       check(buyeridx.find(((uint128_t)from.value << 64)|(uint128_t)skuid) == buyeridx.end(),
@@ -269,6 +288,7 @@ CONTRACT pos : public eosio::contract {
       }.send();
 
       inc_uint_prop(name("purchases"));
+      set_uint_prop(name("lastsale"), now.elapsed.count());
     }
   }
 
