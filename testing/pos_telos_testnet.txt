@@ -26,3 +26,74 @@ tTcleos push action saleterminal updskuprice '["Chanel No. 5", "2.0000 PONY"]' -
 
 tTcleos push action saleterminal updskuprice '["Chanel No. 5", "2.0000 PONY"]' -p payoutrcpt13
 # error: missing authority of payoutpayer1
+
+tTcleos push action saleterminal updskuprice '["Chanel No. 5", "2.0000 PONY"]' -p payoutpayer1
+# error: SKU has this price already
+
+tTcleos push action saleterminal updskudescr '["Chanel No. 5", "blah blah"]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal updskudescr '["Chanel No. 5", "blah blah"]' -p payoutpayer1
+# error: SKU has already this description
+
+tTcleos push action saleterminal delsku '["Chanel No. 5"]' -p payoutpayer1
+# error: Cannot delete the SKU while items are on sale
+
+tTcleos push action saleterminal addstock '["Chanel No. 5", 1000]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal delstock '["Chanel No. 5", 2000]' -p payoutpayer1
+# error: There are only 1010 unsold items on stock
+
+tTcleos push action saleterminal delstock '["Chanel No. 5", 1005]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal delstock '["Chanel No. 5", 10]' -p payoutpayer1
+# error: There are only 5 unsold items on stock
+
+tTcleos push action saleterminal delstock '["Chanel No. 5", 5]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal delsku '["Chanel No. 5"]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal delseller '["payoutpayer1"]' -p payoutpayer1
+# ok
+
+
+tTcleos push action saleterminal newsku '["payoutpayer1", "item100001", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
+
+tTcleos push action saleterminal newsku '["payoutpayer1", "item100002", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
+
+tTcleos push action saleterminal newsku '["payoutpayer1", "item100003", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
+
+tTcleos push action saleterminal newsku '["payoutpayer2", "item200001", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer2
+
+tTcleos push action saleterminal newsku '["payoutpayer2", "item200002", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer2
+
+tTcleos push action saleterminal newsku '["payoutpayer2", "item200003", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer2
+
+
+### buying ###
+
+# top-up
+tTcleos push action ponytokenxxx transfer '["ponytreasure", "payoutrcpt11", "100.0000 PONY", ""]' -p ponytreasure
+tTcleos push action ponytokenxxx transfer '["ponytreasure", "payoutrcpt12", "100.0000 PONY", ""]' -p ponytreasure
+tTcleos push action ponytokenxxx transfer '["ponytreasure", "payoutrcpt13", "100.0000 PONY", ""]' -p ponytreasure
+
+
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "10.0000 PONY", ""]' -p payoutrcpt11
+# error: Cannot find an SKU with such a name. Transfer memo must match exactly an SKU name.
+
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "10.0000 PONY", "item200001"]' -p payoutrcpt11
+# error: Wrong amount or currency, expected: 1.0000 PONY
+
+tTcleos push action eosio.token transfer '["cc32dninexxx", "saleterminal", "1.0000 TLOS", "item200001"]' -p cc32dninexxx
+# error: Wrong token contract, expected: ponytokenxxx
+
+
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200001"]' -p payoutrcpt11
+# ok payreceipt     {"":{"item_id":1,"seller":"payoutpayer2","sku":"item200001","buyer":"payoutrcpt11"}}
+
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200001"]' -p payoutrcpt11
+# error This buyer has purchased already this SKU. Wait for the seller to process the purchase

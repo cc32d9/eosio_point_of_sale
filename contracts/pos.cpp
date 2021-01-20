@@ -63,7 +63,7 @@ CONTRACT pos : public eosio::contract {
     check( hashidx.find(hash) == hashidx.end(), "An SKU with this name already exists");
 
     check(price.amount > 0, "Price must be above zero");
-    
+
     // validate that such token exists
     {
       stats_table statstbl(tkcontract, price.symbol.code().raw());
@@ -90,12 +90,18 @@ CONTRACT pos : public eosio::contract {
                                });
 
     sellercntrs _sellercntrs(_self, 0);
+    sellerinforows _sellerinforows(_self, 0);
+
     auto cntrs_itr = _sellercntrs.find(seller.value);
     if( cntrs_itr == _sellercntrs.end() ) {
       _sellercntrs.emplace(seller, [&]( auto& row ) {
                                      row.seller = seller;
                                      row.skus = 1;
                                    });
+      _sellerinforows.emplace(seller, [&]( auto& row ) {
+                                        row.seller = seller;
+                                      });
+      inc_uint_prop(name("sellers"));
     }
     else {
       _sellercntrs.modify( *cntrs_itr, seller, [&]( auto& row ) {
@@ -103,17 +109,11 @@ CONTRACT pos : public eosio::contract {
                                                });
     }
 
-    sellerinforows _sellerinforows(_self, 0);
-    auto info_itr = _sellerinforows.find(seller.value);
-    if( info_itr == _sellerinforows.end() ) {
-      _sellerinforows.emplace(seller, [&]( auto& row ) {
-                                        row.seller = seller;
-                                      });
-    }
-
     if( count > 0 ) {
       _add_stock(seller, skuid, count);
     }
+
+    inc_uint_prop(name("skus"));
   }
 
 
@@ -121,6 +121,8 @@ CONTRACT pos : public eosio::contract {
   {
     require_auth(seller);
     sellerinforows _sellerinforows(_self, 0);
+    sellercntrs _sellercntrs(_self, 0);
+
     auto info_itr = _sellerinforows.find(seller.value);
     if( info_itr == _sellerinforows.end() ) {
       _sellerinforows.emplace(seller, [&]( auto& row ) {
@@ -128,6 +130,11 @@ CONTRACT pos : public eosio::contract {
                                         row.company = company;
                                         row.website = website;
                                       });
+      _sellercntrs.emplace(seller, [&]( auto& row ) {
+                                     row.seller = seller;
+                                     row.skus = 0;
+                                   });
+      inc_uint_prop(name("sellers"));
     }
     else {
       _sellerinforows.modify( *info_itr, seller, [&]( auto& row ) {
@@ -135,6 +142,23 @@ CONTRACT pos : public eosio::contract {
                                                    row.website = website;
                                                  });
     }
+  }
+
+
+  ACTION delseller(name seller)
+  {
+    require_auth(seller);
+    sellercntrs _sellercntrs(_self, 0);
+    auto ctr_itr = _sellercntrs.find(seller.value);
+    check(ctr_itr != _sellercntrs.end(), "Unknown seller");
+    check(ctr_itr->skus == 0, "Cannot delete a seller with registered SKUs");
+    _sellercntrs.erase(ctr_itr);
+
+    sellerinforows _sellerinforows(_self, 0);
+    auto info_itr = _sellerinforows.find(seller.value);
+    _sellerinforows.erase(info_itr);
+
+    dec_uint_prop(name("sellers"));
   }
 
 
@@ -150,12 +174,12 @@ CONTRACT pos : public eosio::contract {
     check(price.amount > 0, "Price must be above zero");
     check(price.symbol == hashitr->price.symbol, "Cannot change the currency");
     check(price != hashitr->price, "SKU has this price already");
-    
+
     _skus.modify(*hashitr, hashitr->seller, [&]( auto& row ) {
         row.price = price;
       });
   }
-    
+
 
   ACTION updskudescr(string sku, string description)
   {
@@ -172,7 +196,7 @@ CONTRACT pos : public eosio::contract {
       });
   }
 
-  
+
   ACTION delsku(string sku)
   {
     checksum256 hash = sha256(sku.data(), sku.size());
@@ -192,11 +216,20 @@ CONTRACT pos : public eosio::contract {
     auto item_itr = itemidx.find(hashitr->id);
     check(item_itr == itemidx.end(), "Cannot delete the SKU: there are sold items that were not claimed");
 
+
+    sellercntrs _sellercntrs(_self, 0);
+    auto cntrs_itr = _sellercntrs.find(hashitr->seller.value);
+    _sellercntrs.modify( *cntrs_itr, hashitr->seller, [&]( auto& row ) {
+        row.skus--;
+      });
+
     hashidx.erase(hashitr);
+    _stockrows.erase(stock_itr);
+    dec_uint_prop(name("skus"));
   }
 
-  
-  
+
+
   ACTION addstock(string sku, uint32_t count)
   {
     checksum256 hash = sha256(sku.data(), sku.size());
@@ -218,17 +251,17 @@ CONTRACT pos : public eosio::contract {
     check(hashitr != hashidx.end(), "Cannot find an SKU with such a name");
     require_auth(hashitr->seller);
 
-    uint64_t skuid = hashitr->id;    
+    uint64_t skuid = hashitr->id;
     stockitems _stockitems(_self, hashitr->seller.value);
     auto itemidx = _stockitems.get_index<name("skustock")>();
     auto item_itr = itemidx.lower_bound(skuid);
 
     for( uint32_t i=0; i<count; i++ ) {
       check(item_itr != itemidx.end() && item_itr->skuid == skuid,
-            "There are only " + std::to_string(i+1) + " unsold items on stock");
+            "There are only " + std::to_string(i) + " unsold items on stock");
       item_itr = itemidx.erase(item_itr);
     }
-      
+
     sellercntrs _sellercntrs(_self, 0);
     auto ctr_itr = _sellercntrs.find(hashitr->seller.value);
     check(ctr_itr != _sellercntrs.end(), "Exception 10");
@@ -237,19 +270,19 @@ CONTRACT pos : public eosio::contract {
     _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
                                                 row.items_onsale -= count;
                                               });
-    
+
     stockrows _stockrows(_self, 0);
     auto stock_itr = _stockrows.find(hashitr->id);
     check(stock_itr != _stockrows.end(), "Exception 12");
     check(stock_itr->items_onsale >= count, "Exception 13");
-    
+
     _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
                                                 row.items_onsale -= count;
                                               });
 
   }
 
-  
+
   // Oracle delivers last irreversible block and its timestamp.
   ACTION orairrev(uint32_t irrev_block, time_point irrev_timestamp)
   {
@@ -259,10 +292,10 @@ CONTRACT pos : public eosio::contract {
 
     uint64_t old_irrev = get_uint_prop(name("irrevtime"));
     uint64_t new_irrev = irrev_timestamp.elapsed.count();
-    
+
     check(get_uint_prop(name("lastsale")) > old_irrev, "No new sales");
     check(new_irrev > old_irrev, "already registered this timestamp");
-    
+
     set_uint_prop(name("irrevblock"), irrev_block);
     set_uint_prop(name("irrevtime"), new_irrev);
   }
@@ -310,12 +343,12 @@ CONTRACT pos : public eosio::contract {
             name("finalreceipt"),
             receipt_abi {.item_id=item_itr->id, .seller=seller, .sku=sku.sku, .buyer=item_itr->buyer}
       }.send();
-      
+
       check(ctr_itr->items_onsale > 0, "Exception 6");
       _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
                                                   row.items_onsale--;
                                                 });
-      
+
       auto stock_itr = _stockrows.find(sku.id);
       check(stock_itr != _stockrows.end(), "Exception 7");
       check(stock_itr->items_onsale > 0, "Exception 8");
@@ -336,7 +369,8 @@ CONTRACT pos : public eosio::contract {
       skus _skus(_self, 0);
       auto hashidx = _skus.get_index<name("skuhash")>();
       auto hashitr = hashidx.find(hash);
-      check(hashitr != hashidx.end(), "Cannot find an SKU with such a name");
+      check(hashitr != hashidx.end(),
+            "Cannot find an SKU with such a name. Transfer memo must match exactly an SKU name.");
       check(hashitr->tkcontract == get_first_receiver(),
             "Wrong token contract, expected: " + hashitr->tkcontract.to_string());
       check(hashitr->price == quantity,
@@ -412,6 +446,59 @@ CONTRACT pos : public eosio::contract {
     require_auth(_self);
     require_recipient(x.seller);
   }
+
+  ACTION wipeall(uint32_t count)
+  {
+    require_auth(_self);
+    bool done_something = false;
+
+    sellerinforows _sellerinforows(_self, 0);
+    auto selleritr = _sellerinforows.begin();
+    while( count-- > 0 && selleritr != _sellerinforows.end() ) {
+      stockitems _stockitems(_self, selleritr->seller.value);
+      auto items_itr = _stockitems.begin();
+      while( count-- > 0 && items_itr != _stockitems.end() ) {
+        items_itr = _stockitems.erase(items_itr);
+        done_something = true;
+      }
+
+      if( items_itr == _stockitems.end() ) {
+        selleritr = _sellerinforows.erase(selleritr);
+        done_something = true;
+      }
+    }
+
+    skus _skus(_self, 0);
+    auto skuitr = _skus.begin();
+    while( count-- > 0 && skuitr != _skus.end() ) {
+      skuitr = _skus.erase(skuitr);
+      done_something = true;
+    }
+
+    stockrows _stockrows(_self, 0);
+    auto stockitr = _stockrows.begin();
+    while( count-- > 0 && stockitr != _stockrows.end() ) {
+      stockitr = _stockrows.erase(stockitr);
+      done_something = true;
+    }
+
+    sellercntrs _sellercntrs(_self, 0);
+    auto ctr_itr = _sellercntrs.begin();
+    while( count-- > 0 && ctr_itr != _sellercntrs.end() ) {
+      ctr_itr = _sellercntrs.erase(ctr_itr);
+      done_something = true;
+    }
+
+    props _props(_self, 0);
+    auto pitr = _props.begin();
+    while( count-- > 0 && pitr != _props.end() ) {
+      pitr = _props.erase(pitr);
+      done_something = true;
+    }
+
+    check(done_something, "Nothing to do");
+  }
+
 
 
  private:
