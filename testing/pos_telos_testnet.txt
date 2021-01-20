@@ -7,3 +7,22 @@ tTcleos push action saleterminal setfee '["payoutfees11", "5"]' -p saleterminal
 
 
 
+tTcleos push action saleterminal newsku '["payoutpayer1", "Chanel No. 5", "Chanel No. 5 was the first perfume launched by French couturier Gabrielle Coco Chanel in 1921. The scent formula for the fragrance was compounded by French-Russian chemist and perfumer Ernest Beaux. The design of its bottle has been an important part of the products allure. Coco Chanel was the first face of the fragrance, appearing in the advertisement published by Harpers Bazaar in 1937.", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal updseller '["payoutpayer1", "Lorem", "https://www.lipsum.com/"]' -p payoutpayer1
+$ ok
+
+
+tTcleos push action saleterminal newsku '["payoutpayer1", "Chanel No. 5", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
+# error: An SKU with this name already exists
+
+
+tTcleos push action saleterminal updskuprice '["Chanel 5", "2.0000 PONY"]' -p payoutpayer1
+# error: Cannot find an SKU with such a name
+
+tTcleos push action saleterminal updskuprice '["Chanel No. 5", "2.0000 PONY"]' -p payoutpayer1
+# ok
+
+tTcleos push action saleterminal updskuprice '["Chanel No. 5", "2.0000 PONY"]' -p payoutrcpt13
+# error: missing authority of payoutpayer1

@@ -149,6 +149,7 @@ CONTRACT pos : public eosio::contract {
 
     check(price.amount > 0, "Price must be above zero");
     check(price.symbol == hashitr->price.symbol, "Cannot change the currency");
+    check(price != hashitr->price, "SKU has this price already");
     
     _skus.modify(*hashitr, hashitr->seller, [&]( auto& row ) {
         row.price = price;
@@ -164,7 +165,8 @@ CONTRACT pos : public eosio::contract {
     auto hashitr = hashidx.find(hash);
     check( hashitr != hashidx.end(), "Cannot find an SKU with such a name");
     require_auth(hashitr->seller);
-    
+    check(description != hashitr->description, "SKU has already this description");
+
     _skus.modify(*hashitr, hashitr->seller, [&]( auto& row ) {
         row.description = description;
       });
@@ -182,7 +184,7 @@ CONTRACT pos : public eosio::contract {
 
     stockrows _stockrows(_self, 0);
     auto stock_itr = _stockrows.find(hashitr->id);
-    check(stock_itr != _stockrows.end(), "This should never happen 9");
+    check(stock_itr != _stockrows.end(), "Exception 9");
     check(stock_itr->items_onsale == 0, "Cannot delete the SKU while items are on sale");
 
     stockitems _stockitems(_self, hashitr->seller.value);
@@ -229,8 +231,8 @@ CONTRACT pos : public eosio::contract {
       
     sellercntrs _sellercntrs(_self, 0);
     auto ctr_itr = _sellercntrs.find(hashitr->seller.value);
-    check(ctr_itr != _sellercntrs.end(), "This should never happen 10");
-    check(ctr_itr->items_onsale >= count, "This should never happen 11");
+    check(ctr_itr != _sellercntrs.end(), "Exception 10");
+    check(ctr_itr->items_onsale >= count, "Exception 11");
 
     _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
                                                 row.items_onsale -= count;
@@ -238,8 +240,8 @@ CONTRACT pos : public eosio::contract {
     
     stockrows _stockrows(_self, 0);
     auto stock_itr = _stockrows.find(hashitr->id);
-    check(stock_itr != _stockrows.end(), "This should never happen 12");
-    check(stock_itr->items_onsale >= count, "This should never happen 13");
+    check(stock_itr != _stockrows.end(), "Exception 12");
+    check(stock_itr->items_onsale >= count, "Exception 13");
     
     _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
                                                 row.items_onsale -= count;
@@ -288,7 +290,7 @@ CONTRACT pos : public eosio::contract {
     auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
 
     while(count-- > 0 && item_itr != itemidx.end() && item_itr->get_sold_on() <= irrev_time) {
-      auto& sku = _skus.get(item_itr->skuid, "This should never happen 5");
+      auto& sku = _skus.get(item_itr->skuid, "Exception 5");
       asset quantity = sku.price;
 
       if( feepermille > 0 && feeacc != name("") ) {
@@ -309,14 +311,14 @@ CONTRACT pos : public eosio::contract {
             receipt_abi {.item_id=item_itr->id, .seller=seller, .sku=sku.sku, .buyer=item_itr->buyer}
       }.send();
       
-      check(ctr_itr->items_onsale > 0, "This should never happen 6");
+      check(ctr_itr->items_onsale > 0, "Exception 6");
       _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
                                                   row.items_onsale--;
                                                 });
       
       auto stock_itr = _stockrows.find(sku.id);
-      check(stock_itr != _stockrows.end(), "This should never happen 7");
-      check(stock_itr->items_onsale > 0, "This should never happen 8");
+      check(stock_itr != _stockrows.end(), "Exception 7");
+      check(stock_itr->items_onsale > 0, "Exception 8");
       _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
                                                   row.items_onsale--;
                                                 });
@@ -365,7 +367,7 @@ CONTRACT pos : public eosio::contract {
       // update statistics
       sellercntrs _sellercntrs(_self, 0);
       auto ctr_itr = _sellercntrs.find(seller.value);
-      check( ctr_itr != _sellercntrs.end(), "This should never happen 3");
+      check( ctr_itr != _sellercntrs.end(), "Exception 3");
       _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
                                                   row.items_onsale--;
                                                   row.last_sale = now;
@@ -373,7 +375,7 @@ CONTRACT pos : public eosio::contract {
 
       stockrows _stockrows(_self, 0);
       auto stock_itr = _stockrows.find(skuid);
-      check(stock_itr != _stockrows.end(), "This should never happen 4");
+      check(stock_itr != _stockrows.end(), "Exception 4");
       _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
                                                   row.items_onsale--;
                                                   row.last_sale = now;
@@ -498,7 +500,7 @@ CONTRACT pos : public eosio::contract {
   {
     sellercntrs _sellercntrs(_self, 0);
     auto ctr_itr = _sellercntrs.find(seller.value);
-    check( ctr_itr != _sellercntrs.end(), "This should never happen 1");
+    check( ctr_itr != _sellercntrs.end(), "Exception 1");
     uint64_t itemid = ctr_itr->next_item_id;
 
     stockitems _stockitems(_self, seller.value);
@@ -517,7 +519,7 @@ CONTRACT pos : public eosio::contract {
 
     stockrows _stockrows(_self, 0);
     auto stock_itr = _stockrows.find(skuid);
-    check(stock_itr != _stockrows.end(), "This should never happen 2");
+    check(stock_itr != _stockrows.end(), "Exception 2");
     _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
                                                 row.items_onsale += count;
                                               });
