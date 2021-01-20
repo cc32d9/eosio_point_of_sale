@@ -62,6 +62,8 @@ CONTRACT pos : public eosio::contract {
     auto hashidx = _skus.get_index<name("skuhash")>();
     check( hashidx.find(hash) == hashidx.end(), "An SKU with this name already exists");
 
+    check(price.amount > 0, "Price must be above zero");
+    
     // validate that such token exists
     {
       stats_table statstbl(tkcontract, price.symbol.code().raw());
@@ -136,19 +138,116 @@ CONTRACT pos : public eosio::contract {
   }
 
 
-  ACTION addstock(string sku, uint32_t count)
+  ACTION updskuprice(string sku, asset price)
   {
     checksum256 hash = sha256(sku.data(), sku.size());
     skus _skus(_self, 0);
     auto hashidx = _skus.get_index<name("skuhash")>();
     auto hashitr = hashidx.find(hash);
     check( hashitr != hashidx.end(), "Cannot find an SKU with such a name");
+    require_auth(hashitr->seller);
 
+    check(price.amount > 0, "Price must be above zero");
+    check(price.symbol == hashitr->price.symbol, "Cannot change the currency");
+    
+    _skus.modify(*hashitr, hashitr->seller, [&]( auto& row ) {
+        row.price = price;
+      });
+  }
+    
+
+  ACTION updskudescr(string sku, string description)
+  {
+    checksum256 hash = sha256(sku.data(), sku.size());
+    skus _skus(_self, 0);
+    auto hashidx = _skus.get_index<name("skuhash")>();
+    auto hashitr = hashidx.find(hash);
+    check( hashitr != hashidx.end(), "Cannot find an SKU with such a name");
+    require_auth(hashitr->seller);
+    
+    _skus.modify(*hashitr, hashitr->seller, [&]( auto& row ) {
+        row.description = description;
+      });
+  }
+
+  
+  ACTION delsku(string sku)
+  {
+    checksum256 hash = sha256(sku.data(), sku.size());
+    skus _skus(_self, 0);
+    auto hashidx = _skus.get_index<name("skuhash")>();
+    auto hashitr = hashidx.find(hash);
+    check( hashitr != hashidx.end(), "Cannot find an SKU with such a name");
+    require_auth(hashitr->seller);
+
+    stockrows _stockrows(_self, 0);
+    auto stock_itr = _stockrows.find(hashitr->id);
+    check(stock_itr != _stockrows.end(), "This should never happen 9");
+    check(stock_itr->items_onsale == 0, "Cannot delete the SKU while items are on sale");
+
+    stockitems _stockitems(_self, hashitr->seller.value);
+    auto itemidx = _stockitems.get_index<name("sku")>();
+    auto item_itr = itemidx.find(hashitr->id);
+    check(item_itr == itemidx.end(), "Cannot delete the SKU: there are sold items that were not claimed");
+
+    hashidx.erase(hashitr);
+  }
+
+  
+  
+  ACTION addstock(string sku, uint32_t count)
+  {
+    checksum256 hash = sha256(sku.data(), sku.size());
+    skus _skus(_self, 0);
+    auto hashidx = _skus.get_index<name("skuhash")>();
+    auto hashitr = hashidx.find(hash);
+    check(hashitr != hashidx.end(), "Cannot find an SKU with such a name");
     require_auth(hashitr->seller);
     _add_stock(hashitr->seller, hashitr->id, count);
   }
 
 
+  ACTION delstock(string sku, uint32_t count)
+  {
+    checksum256 hash = sha256(sku.data(), sku.size());
+    skus _skus(_self, 0);
+    auto hashidx = _skus.get_index<name("skuhash")>();
+    auto hashitr = hashidx.find(hash);
+    check(hashitr != hashidx.end(), "Cannot find an SKU with such a name");
+    require_auth(hashitr->seller);
+
+    uint64_t skuid = hashitr->id;    
+    stockitems _stockitems(_self, hashitr->seller.value);
+    auto itemidx = _stockitems.get_index<name("skustock")>();
+    auto item_itr = itemidx.lower_bound(skuid);
+
+    for( uint32_t i=0; i<count; i++ ) {
+      check(item_itr != itemidx.end() && item_itr->skuid == skuid,
+            "There are only " + std::to_string(i+1) + " unsold items on stock");
+      item_itr = itemidx.erase(item_itr);
+    }
+      
+    sellercntrs _sellercntrs(_self, 0);
+    auto ctr_itr = _sellercntrs.find(hashitr->seller.value);
+    check(ctr_itr != _sellercntrs.end(), "This should never happen 10");
+    check(ctr_itr->items_onsale >= count, "This should never happen 11");
+
+    _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
+                                                row.items_onsale -= count;
+                                              });
+    
+    stockrows _stockrows(_self, 0);
+    auto stock_itr = _stockrows.find(hashitr->id);
+    check(stock_itr != _stockrows.end(), "This should never happen 12");
+    check(stock_itr->items_onsale >= count, "This should never happen 13");
+    
+    _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
+                                                row.items_onsale -= count;
+                                              });
+
+  }
+
+  
   // Oracle delivers last irreversible block and its timestamp.
   ACTION orairrev(uint32_t irrev_block, time_point irrev_timestamp)
   {
@@ -245,7 +344,7 @@ CONTRACT pos : public eosio::contract {
       name seller = hashitr->seller;
 
       stockitems _stockitems(_self, seller.value);
-      auto itemidx = _stockitems.get_index<name("skuid")>();
+      auto itemidx = _stockitems.get_index<name("skustock")>();
       auto item_itr = itemidx.lower_bound(skuid);
       check(item_itr != itemidx.end() && item_itr->skuid == skuid, "This SKU is sold out");
 
@@ -325,11 +424,13 @@ CONTRACT pos : public eosio::contract {
     asset          price;
     auto primary_key()const { return id; }
     checksum256 get_skuhash() const { return sha256(sku.data(), sku.size()); }
+    uint128_t get_selleridx() const { return ((uint128_t)seller.value << 64)|(uint128_t)id; }
   };
 
   typedef eosio::multi_index<
     name("skus"), sku,
-    indexed_by<name("skuhash"), const_mem_fun<sku, checksum256, &sku::get_skuhash>>
+    indexed_by<name("skuhash"), const_mem_fun<sku, checksum256, &sku::get_skuhash>>,
+    indexed_by<name("byseller"), const_mem_fun<sku, uint128_t, &sku::get_selleridx>>
     > skus;
 
 
@@ -377,14 +478,16 @@ CONTRACT pos : public eosio::contract {
     name            buyer;
     checksum256     trxid;
     auto primary_key()const { return id; }
-    uint64_t get_skuid()const { return (sold_on.elapsed.count() == 0) ? skuid : 0; }
+    uint64_t get_sku()const { return skuid; }
+    uint64_t get_skustock()const { return (sold_on.elapsed.count() == 0) ? skuid : 0; }
     uint64_t get_sold_on()const { return sold_on.elapsed.count(); }
     uint128_t get_buyer_sku()const { return ((uint128_t)buyer.value << 64)|(uint128_t)skuid; }
   };
 
   typedef eosio::multi_index<
     name("stockitems"), stockitem,
-    indexed_by<name("skuid"), const_mem_fun<stockitem, uint64_t, &stockitem::get_skuid>>,
+    indexed_by<name("sku"), const_mem_fun<stockitem, uint64_t, &stockitem::get_sku>>,
+    indexed_by<name("skustock"), const_mem_fun<stockitem, uint64_t, &stockitem::get_skustock>>,
     indexed_by<name("soldon"), const_mem_fun<stockitem, uint64_t, &stockitem::get_sold_on>>,
     indexed_by<name("buyersku"), const_mem_fun<stockitem, uint128_t, &stockitem::get_buyer_sku>>
     > stockitems;
@@ -399,7 +502,7 @@ CONTRACT pos : public eosio::contract {
     uint64_t itemid = ctr_itr->next_item_id;
 
     stockitems _stockitems(_self, seller.value);
-    while( count > 0 ) {
+    for( uint32_t i=0; i<count; i++ ) {
       _stockitems.emplace(seller, [&]( auto& row ) {
                                     row.id = itemid;
                                     row.skuid = skuid;
