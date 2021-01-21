@@ -316,7 +316,6 @@ CONTRACT pos : public eosio::contract {
     bool done_something = false;
 
     skus _skus(_self, 0);
-    stockrows _stockrows(_self, 0);
 
     stockitems _stockitems(_self, seller.value);
     auto itemidx = _stockitems.get_index<name("soldon")>();
@@ -344,18 +343,8 @@ CONTRACT pos : public eosio::contract {
           _self, name("finalreceipt"), rcpt
             }.send();
 
-      check(ctr_itr->items_onsale > 0, "Exception 6");
-      _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
-                                                  row.items_onsale--;
-                                                });
-
-      auto stock_itr = _stockrows.find(sku.id);
-      check(stock_itr != _stockrows.end(), "Exception 7");
-      check(stock_itr->items_onsale > 0, "Exception 8");
-      _stockrows.modify(*stock_itr, same_payer, [&]( auto& row ) {
-                                                  row.items_onsale--;
-                                                });
       item_itr = itemidx.erase(item_itr);
+      done_something = true;
     }
     check(done_something, "No sold items available for claims");
   }

@@ -85,21 +85,72 @@ tTcleos push action ponytokenxxx transfer '["ponytreasure", "payoutrcpt13", "100
 tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "10.0000 PONY", ""]' -p payoutrcpt11
 # error: Cannot find an SKU with such a name. Transfer memo must match exactly an SKU name.
 
-tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "10.0000 PONY", "item200001"]' -p payoutrcpt11
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "10.0000 PONY", "item200002"]' -p payoutrcpt11
 # error: Wrong amount or currency, expected: 1.0000 PONY
 
-tTcleos push action eosio.token transfer '["cc32dninexxx", "saleterminal", "1.0000 TLOS", "item200001"]' -p cc32dninexxx
+tTcleos push action eosio.token transfer '["cc32dninexxx", "saleterminal", "1.0000 TLOS", "item200002"]' -p cc32dninexxx
 # error: Wrong token contract, expected: ponytokenxxx
 
 
-tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200001"]' -p payoutrcpt11
-# ok payreceipt     {"":{"item_id":1,"seller":"payoutpayer2","sku":"item200001","buyer":"payoutrcpt11"}}
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200002"]' -p payoutrcpt11
+# ok payreceipt payreceipt     {"receipt":{"item_id":11,"seller":"payoutpayer2","sku":"item200002","price":"1.0000 PONY","buyer":"p
 
-tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200001"]' -p payoutrcpt11
+tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200002"]' -p payoutrcpt11
 # error This buyer has purchased already this SKU. Wait for the seller to process the purchase
 
-tTcleos push action saleterminal delstock '["item200001", 10]' -p payoutpayer2
+tTcleos push action saleterminal delstock '["item200002", 10]' -p payoutpayer2
 # error: There are only 9 unsold items on stock
 
+tTcleos push action saleterminal delstock '["item200002", 8]' -p payoutpayer2
+# ok
+tTcleos get table --limit=30 saleterminal payoutpayer2 stockitems
+tTcleos get table --limit=30 saleterminal 0 sellercntrs
 
+tTcleos push action ponytokenxxx transfer '["payoutrcpt12", "saleterminal", "1.0000 PONY", "item200002"]' -p payoutrcpt12
+# ok
+tTcleos get table --limit=30 saleterminal 0 sellercntrs
+
+tTcleos push action ponytokenxxx transfer '["payoutrcpt13", "saleterminal", "1.0000 PONY", "item200002"]' -p payoutrcpt13
+# error: This SKU is sold out
+
+tTcleos push action saleterminal claim '["payoutpayer2", 10]' -p payoutpayer2
+# error: No sold items available for claims
+
+tTcleos get info
+tTcleos get block 89648046 | grep timestamp
+
+tTcleos push action saleterminal orairrev '[89648046, "2021-01-21T13:18:23.500"]' -p payoutpayer2
+# error: missing authority of payoutadmin1
+
+tTcleos push action saleterminal orairrev '[89648046, "2021-01-21T13:18:23.500"]' -p payoutadmin1
+#ok 
+
+tTcleos push action saleterminal orairrev '[89648046, "2021-01-21T13:18:23.500"]' -p payoutadmin1
+# error: No new sales
+
+tTcleos push action saleterminal claim '["payoutpayer2", 10]' -p payoutpayer2
+# ok
+#  saleterminal <= saleterminal::claim          {"seller":"payoutpayer2","count":10}
+#  ponytokenxxx <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutfees11","quantity":"0.0050 PONY","memo":"fees"}
+#  ponytokenxxx <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutpayer2","quantity":"0.9950 PONY","memo":"{\"sku\":\"item200002\",...
+#  saleterminal <= saleterminal::finalreceipt   {"receipt":{"item_id":11,"seller":"payoutpayer2","sku":"item200002","price":"1.0000 PONY","buyer":"p...
+#  ponytokenxxx <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutfees11","quantity":"0.0050 PONY","memo":"fees"}
+#  ponytokenxxx <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutpayer2","quantity":"0.9950 PONY","memo":"{\"sku\":\"item200002\",...
+#  saleterminal <= saleterminal::finalreceipt   {"receipt":{"item_id":20,"seller":"payoutpayer2","sku":"item200002","price":"1.0000 PONY","buyer":"p...
+#  saleterminal <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutfees11","quantity":"0.0050 PONY","memo":"fees"}
+#  payoutfees11 <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutfees11","quantity":"0.0050 PONY","memo":"fees"}
+#  saleterminal <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutpayer2","quantity":"0.9950 PONY","memo":"{\"sku\":\"item200002\",...
+#  payoutpayer2 <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutpayer2","quantity":"0.9950 PONY","memo":"{\"sku\":\"item200002\",...
+#  payoutpayer2 <= saleterminal::finalreceipt   {"receipt":{"item_id":11,"seller":"payoutpayer2","sku":"item200002","price":"1.0000 PONY","buyer":"p...
+#  saleterminal <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutfees11","quantity":"0.0050 PONY","memo":"fees"}
+#  payoutfees11 <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutfees11","quantity":"0.0050 PONY","memo":"fees"}
+#  saleterminal <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutpayer2","quantity":"0.9950 PONY","memo":"{\"sku\":\"item200002\",...
+#  payoutpayer2 <= ponytokenxxx::transfer       {"from":"saleterminal","to":"payoutpayer2","quantity":"0.9950 PONY","memo":"{\"sku\":\"item200002\",...
+#  payoutpayer2 <= saleterminal::finalreceipt   {"receipt":{"item_id":20,"seller":"payoutpayer2","sku":"item200002","price":"1.0000 PONY","buyer":"p...
+
+tTcleos get currency balance ponytokenxxx saleterminal PONY
+0.0000 PONY
+
+tTcleos push action saleterminal claim '["payoutpayer2", "10"]' -p payoutpayer2
+# error: No sold items available for claims
 
