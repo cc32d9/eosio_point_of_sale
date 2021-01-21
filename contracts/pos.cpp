@@ -324,7 +324,7 @@ CONTRACT pos : public eosio::contract {
 
     while(count-- > 0 && item_itr != itemidx.end() && item_itr->get_sold_on() <= irrev_time) {
       auto& sku = _skus.get(item_itr->skuid, "Exception 5");
-      asset quantity = sku.price;
+      asset quantity = item_itr->price;
 
       if( feepermille > 0 && feeacc != name("") ) {
         asset fee = quantity * feepermille / 1000;
@@ -394,6 +394,7 @@ CONTRACT pos : public eosio::contract {
       // mark the item as sold
       _stockitems.modify(*item_itr, same_payer, [&]( auto& row ) {
                                                   row.sold_on = now;
+                                                  row.price = quantity;
                                                   row.buyer = from;
                                                   row.trxid = get_trxid();
                                                 });
@@ -564,6 +565,7 @@ CONTRACT pos : public eosio::contract {
     uint64_t        id;
     uint64_t        skuid;
     time_point      sold_on;
+    asset           price;
     name            buyer;
     checksum256     trxid;
     auto primary_key()const { return id; }

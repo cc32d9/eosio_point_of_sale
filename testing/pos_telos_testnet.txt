@@ -97,3 +97,9 @@ tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0
 
 tTcleos push action ponytokenxxx transfer '["payoutrcpt11", "saleterminal", "1.0000 PONY", "item200001"]' -p payoutrcpt11
 # error This buyer has purchased already this SKU. Wait for the seller to process the purchase
+
+tTcleos push action saleterminal delstock '["item200001", 10]' -p payoutpayer2
+# error: There are only 9 unsold items on stock
+
+
+
