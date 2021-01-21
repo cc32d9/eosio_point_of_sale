@@ -333,16 +333,16 @@ CONTRACT pos : public eosio::contract {
         send_payment(feeacc, xfee, "fees");
       }
 
+      receipt rcpt(sku, *item_itr);
+
       send_payment(seller, extended_asset{quantity, sku.tkcontract},
                    string("{\"sku\":\"") + sku.sku + "\",\"item_id\":\"" +
                    std::to_string(item_itr->id) +
                    "\",\"buyer\":\"" + item_itr->buyer.to_string() + "\"}");
       action {
         permission_level{_self, name("active")},
-          _self,
-            name("finalreceipt"),
-            receipt_abi {.item_id=item_itr->id, .seller=seller, .sku=sku.sku, .buyer=item_itr->buyer}
-      }.send();
+          _self, name("finalreceipt"), rcpt
+            }.send();
 
       check(ctr_itr->items_onsale > 0, "Exception 6");
       _sellercntrs.modify(*ctr_itr, same_payer, [&]( auto& row ) {
@@ -416,12 +416,11 @@ CONTRACT pos : public eosio::contract {
                                                   row.last_sale = now;
                                                 });
 
+      receipt rcpt(*hashitr, *item_itr);
       action {
         permission_level{_self, name("active")},
-          _self,
-            name("payreceipt"),
-            receipt_abi {.item_id=item_id, .seller=seller, .sku=hashitr->sku, .buyer=from }
-      }.send();
+          _self, name("payreceipt"), rcpt
+            }.send();
 
       inc_uint_prop(name("purchases"));
       set_uint_prop(name("lastsale"), now.elapsed.count());
@@ -429,24 +428,6 @@ CONTRACT pos : public eosio::contract {
   }
 
 
-  // inline notifications
-  struct receipt_abi {
-    uint64_t       item_id;
-    name           seller;
-    string         sku;
-    name           buyer;
-  };
-
-  ACTION payreceipt(receipt_abi)
-  {
-    require_auth(_self);
-  }
-
-  ACTION finalreceipt(receipt_abi x)
-  {
-    require_auth(_self);
-    require_recipient(x.seller);
-  }
 
   ACTION wipeall(uint32_t count)
   {
@@ -724,9 +705,6 @@ CONTRACT pos : public eosio::contract {
 
 
 
-
-
-
   inline checksum256 get_trxid()
   {
     auto trxsize = transaction_size();
@@ -767,4 +745,40 @@ CONTRACT pos : public eosio::contract {
   };
 
   typedef eosio::multi_index<"stat"_n, currency_stats> stats_table;
+
+ public:
+
+  // inline notifications
+  struct receipt {
+    uint64_t       item_id;
+    name           seller;
+    string         sku;
+    asset          price;
+    name           buyer;
+    checksum256    payment_trxid;
+
+    receipt(const pos::sku& skuobj, const pos::stockitem& item) {
+      item_id = item.id;
+      seller = skuobj.seller;
+      sku = skuobj.sku;
+      price = item.price;
+      buyer = item.buyer;
+      payment_trxid = item.trxid;
+    }
+
+    receipt() {}
+  };
+  EOSLIB_SERIALIZE(receipt, (item_id)(seller)(sku)(price)(buyer)(payment_trxid));
+
+  ACTION payreceipt(receipt& receipt)
+  {
+    require_auth(_self);
+  }
+
+  ACTION finalreceipt(receipt& receipt)
+  {
+    require_auth(_self);
+    require_recipient(receipt.seller);
+  }
+
 };
