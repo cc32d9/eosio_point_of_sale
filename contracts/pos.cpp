@@ -53,6 +53,36 @@ CONTRACT pos : public eosio::contract {
   }
 
 
+  ACTION updseller(name seller, string company, string website, bool tracking)
+  {
+    require_auth(seller);
+    sellerinforows _sellerinforows(_self, 0);
+    sellercntrs _sellercntrs(_self, 0);
+
+    auto info_itr = _sellerinforows.find(seller.value);
+    if( info_itr == _sellerinforows.end() ) {
+      _sellerinforows.emplace(seller, [&]( auto& row ) {
+                                        row.seller = seller;
+                                        row.company = company;
+                                        row.website = website;
+                                        row.tracking = tracking;
+                                      });
+      _sellercntrs.emplace(seller, [&]( auto& row ) {
+                                     row.seller = seller;
+                                     row.skus = 0;
+                                   });
+      inc_uint_prop(name("sellers"));
+    }
+    else {
+      _sellerinforows.modify( *info_itr, seller, [&]( auto& row ) {
+                                                   row.company = company;
+                                                   row.website = website;
+                                                   row.tracking = tracking;
+                                                 });
+    }
+  }
+
+
   ACTION newsku(name seller, string sku, string description, name tkcontract, asset price, uint32_t count)
   {
     require_auth(seller);
@@ -72,6 +102,13 @@ CONTRACT pos : public eosio::contract {
       check(statsitr->supply.symbol.precision() == price.symbol.precision(), "Wrong currency precision");
     }
 
+    sellercntrs _sellercntrs(_self, 0);
+    auto cntrs_itr = _sellercntrs.find(seller.value);
+    check(cntrs_itr != _sellercntrs.end(), "Unknown seller");
+    _sellercntrs.modify( *cntrs_itr, seller, [&]( auto& row ) {
+                                               row.skus++;
+                                             });
+
     inc_uint_prop(name("lastskuid"));
     uint64_t skuid = get_uint_prop(name("lastskuid"));
 
@@ -89,26 +126,6 @@ CONTRACT pos : public eosio::contract {
                                  row.skuid = skuid;
                                });
 
-    sellercntrs _sellercntrs(_self, 0);
-    sellerinforows _sellerinforows(_self, 0);
-
-    auto cntrs_itr = _sellercntrs.find(seller.value);
-    if( cntrs_itr == _sellercntrs.end() ) {
-      _sellercntrs.emplace(seller, [&]( auto& row ) {
-                                     row.seller = seller;
-                                     row.skus = 1;
-                                   });
-      _sellerinforows.emplace(seller, [&]( auto& row ) {
-                                        row.seller = seller;
-                                      });
-      inc_uint_prop(name("sellers"));
-    }
-    else {
-      _sellercntrs.modify( *cntrs_itr, seller, [&]( auto& row ) {
-                                                 row.skus++;
-                                               });
-    }
-
     if( count > 0 ) {
       _add_stock(seller, skuid, count);
     }
@@ -117,32 +134,6 @@ CONTRACT pos : public eosio::contract {
   }
 
 
-  ACTION updseller(name seller, string company, string website)
-  {
-    require_auth(seller);
-    sellerinforows _sellerinforows(_self, 0);
-    sellercntrs _sellercntrs(_self, 0);
-
-    auto info_itr = _sellerinforows.find(seller.value);
-    if( info_itr == _sellerinforows.end() ) {
-      _sellerinforows.emplace(seller, [&]( auto& row ) {
-                                        row.seller = seller;
-                                        row.company = company;
-                                        row.website = website;
-                                      });
-      _sellercntrs.emplace(seller, [&]( auto& row ) {
-                                     row.seller = seller;
-                                     row.skus = 0;
-                                   });
-      inc_uint_prop(name("sellers"));
-    }
-    else {
-      _sellerinforows.modify( *info_itr, seller, [&]( auto& row ) {
-                                                   row.company = company;
-                                                   row.website = website;
-                                                 });
-    }
-  }
 
 
   ACTION delseller(name seller)
@@ -216,6 +207,10 @@ CONTRACT pos : public eosio::contract {
     auto item_itr = itemidx.find(hashitr->id);
     check(item_itr == itemidx.end(), "Cannot delete the SKU: there are sold items that were not claimed");
 
+    trackingrows _trackingrows(_self, hashitr->seller.value);
+    auto trackidx = _trackingrows.get_index<name("sku")>();
+    check(trackidx.find(hashitr->id) == trackidx.end(),
+          "Cannot delete the SKU: there are items in tracking table");
 
     sellercntrs _sellercntrs(_self, 0);
     auto cntrs_itr = _sellercntrs.find(hashitr->seller.value);
@@ -301,57 +296,9 @@ CONTRACT pos : public eosio::contract {
   }
 
 
-  // seller claims the payments after they become irreversible
-  ACTION claim(name seller, uint32_t count)
-  {
-    require_auth(seller);
-    sellercntrs _sellercntrs(_self, 0);
-    auto ctr_itr = _sellercntrs.find(seller.value);
-    check(ctr_itr != _sellercntrs.end(), "Unknown seller");
-
-    uint64_t feepermille = get_uint_prop(name("feepermille"));
-    name feeacc = get_name_prop(name("feeacc"));
-
-    uint64_t irrev_time = get_uint_prop(name("irrevtime"));
-    bool done_something = false;
-
-    skus _skus(_self, 0);
-
-    stockitems _stockitems(_self, seller.value);
-    auto itemidx = _stockitems.get_index<name("soldon")>();
-    auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
-
-    while(count-- > 0 && item_itr != itemidx.end() && item_itr->get_sold_on() <= irrev_time) {
-      auto& sku = _skus.get(item_itr->skuid, "Exception 5");
-      asset quantity = item_itr->price;
-
-      if( feepermille > 0 && feeacc != name("") ) {
-        asset fee = quantity * feepermille / 1000;
-        quantity -= fee;
-        extended_asset xfee(fee, sku.tkcontract);
-        send_payment(feeacc, xfee, "fees");
-      }
-
-      receipt rcpt(sku, *item_itr);
-
-      send_payment(seller, extended_asset{quantity, sku.tkcontract},
-                   string("{\"sku\":\"") + sku.sku + "\",\"item_id\":\"" +
-                   std::to_string(item_itr->id) +
-                   "\",\"buyer\":\"" + item_itr->buyer.to_string() + "\"}");
-      action {
-        permission_level{_self, name("active")},
-          _self, name("finalreceipt"), rcpt
-            }.send();
-
-      item_itr = itemidx.erase(item_itr);
-      done_something = true;
-    }
-    check(done_something, "No sold items available for claims");
-  }
 
 
   // incoming payment. Memo must match an SKU
-
   [[eosio::on_notify("*::transfer")]] void on_payment (name from, name to, asset quantity, string memo) {
     if(to == _self) {
       checksum256 hash = sha256(memo.data(), memo.size());
@@ -416,6 +363,113 @@ CONTRACT pos : public eosio::contract {
     }
   }
 
+
+  // seller claims the payments after they become irreversible
+  ACTION claim(name seller, uint32_t count)
+  {
+    require_auth(seller);
+    sellerinforows _sellerinforows(_self, 0);
+    auto info_itr = _sellerinforows.find(seller.value);
+    check(info_itr == _sellerinforows.end(), "Unknown seller");
+
+    trackingrows _trackingrows(_self, seller.value);
+
+    uint64_t feepermille = get_uint_prop(name("feepermille"));
+    name feeacc = get_name_prop(name("feeacc"));
+
+    uint64_t irrev_time = get_uint_prop(name("irrevtime"));
+    bool done_something = false;
+
+    skus _skus(_self, 0);
+
+    stockitems _stockitems(_self, seller.value);
+    auto itemidx = _stockitems.get_index<name("soldon")>();
+    auto item_itr = itemidx.lower_bound(1); // sold_on is zero if the item is not sold
+
+    time_point now;
+    checksum256 trxid;
+    if( info_itr->tracking ) {
+      now = current_time_point();
+      trxid = get_trxid();
+    }
+
+    while(count-- > 0 && item_itr != itemidx.end() && item_itr->get_sold_on() <= irrev_time) {
+      auto& sku = _skus.get(item_itr->skuid, "Exception 5");
+      asset quantity = item_itr->price;
+
+      if( feepermille > 0 && feeacc != name("") ) {
+        asset fee = quantity * feepermille / 1000;
+        quantity -= fee;
+        extended_asset xfee(fee, sku.tkcontract);
+        send_payment(feeacc, xfee, "fees");
+      }
+
+      receipt rcpt(sku, *item_itr);
+
+      send_payment(seller, extended_asset{quantity, sku.tkcontract},
+                   string("{\"sku\":\"") + sku.sku + "\",\"item_id\":\"" +
+                   std::to_string(item_itr->id) +
+                   "\",\"buyer\":\"" + item_itr->buyer.to_string() + "\"}");
+      action {
+        permission_level{_self, name("active")},
+          _self, name("finalreceipt"), rcpt
+            }.send();
+
+      if( info_itr->tracking ) {
+        _trackingrows.emplace(seller, [&]( auto& row ) {
+                                        row.itemid = item_itr->id;
+                                        row.skuid  = item_itr->skuid;
+                                        row.sold_on = item_itr->sold_on;
+                                        row.price = item_itr->price;
+                                        row.buyer = item_itr->buyer;
+                                        row.tracking_state = name("paymntrcvd");
+                                        row.memo = "Payment received";
+                                        row.updated_on = now;
+                                        row.update_trxid = trxid;
+                                      });
+      }
+
+      item_itr = itemidx.erase(item_itr);
+      done_something = true;
+    }
+    check(done_something, "No sold items available for claims");
+  }
+
+
+  ACTION updtracking(name seller, name newstate, string memo, vector<uint64_t> itemids)
+  {
+    require_auth(seller);
+    checksum256 trxid = get_trxid();
+    time_point now = current_time_point();
+    trackingrows _trackingrows(_self, seller.value);
+
+    for( uint64_t itemid: itemids ) {
+      auto track_iter = _trackingrows.find(itemid);
+      check(track_iter != _trackingrows.end(),
+            "Cannot find tracking item id: " + std::to_string(itemid));
+
+      _trackingrows.modify( *track_iter, seller, [&]( auto& row ) {
+                                                   row.tracking_state = newstate;
+                                                   row.memo = memo;
+                                                   row.updated_on = now;
+                                                   row.update_trxid = trxid;
+                                                 });
+    }
+  }
+
+
+  ACTION deltracking(name seller, vector<uint64_t> itemids)
+  {
+    require_auth(seller);
+    trackingrows _trackingrows(_self, seller.value);
+
+    for( uint64_t itemid: itemids ) {
+      auto track_iter = _trackingrows.find(itemid);
+      check(track_iter != _trackingrows.end(),
+            "Cannot find tracking item id: " + std::to_string(itemid));
+      _trackingrows.erase(track_iter);
+    }
+  }
 
 
   ACTION wipeall(uint32_t count)
@@ -523,6 +577,7 @@ CONTRACT pos : public eosio::contract {
     name       seller;
     string     company;
     string     website;
+    bool       tracking;
     auto primary_key()const { return seller.value; }
   };
 
@@ -584,6 +639,30 @@ CONTRACT pos : public eosio::contract {
                                               });
   }
 
+
+  // Tracking the items; scope=seller
+  struct [[eosio::table("tracking")]] trackingrow {
+    uint64_t        itemid;
+    uint64_t        skuid;
+    time_point      sold_on;
+    asset           price;
+    name            buyer;
+    name            tracking_state;
+    string          memo;
+    time_point      updated_on;
+    checksum256     update_trxid;
+    auto primary_key()const { return itemid; }
+    uint64_t get_sku()const { return skuid; }
+    uint64_t get_updated_on()const { return updated_on.elapsed.count(); }
+    uint128_t get_by_state()const { return ((uint128_t)tracking_state.value << 64)|(uint128_t)itemid; }
+  };
+
+  typedef eosio::multi_index<
+    name("tracking"), trackingrow,
+    indexed_by<name("sku"), const_mem_fun<trackingrow, uint64_t, &trackingrow::get_sku>>,
+    indexed_by<name("updates"), const_mem_fun<trackingrow, uint64_t, &trackingrow::get_updated_on>>,
+    indexed_by<name("state"), const_mem_fun<trackingrow, uint128_t, &trackingrow::get_by_state>>
+    > trackingrows;
 
 
 
@@ -694,7 +773,7 @@ CONTRACT pos : public eosio::contract {
 
 
 
-  inline checksum256 get_trxid()
+  checksum256 get_trxid()
   {
     auto trxsize = transaction_size();
     char trxbuf[trxsize];

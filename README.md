@@ -4,6 +4,10 @@ The goal of this project is to provide a base layer for all kinds of
 e-commerce and marketplaces. Anyone can list their products, define
 the prices in their preferred currency.
 
+The contract provides all on-chain means for the seller to be
+independent from any history services. The seller can track the status
+of their items and payments by querying the contract tables directly.
+
 The contract insists on exact amounts and memo text in incoming
 payments. Also once the payment becomes irreversible, the contract
 allows the buyer to claim the tokens. The seller also receives a detailed
@@ -11,18 +15,18 @@ receipt about every sold item, so the receipt action can trigger
 additional activity, such as sending an NFT token.
 
 The contract deducts 0.5% fee from the sales, to compensate for the
-infrastructure and development.
+infrastructure and development costs.
+
+Optionally the contract provides the seller a possibility to track the
+item status after the payment is received.
+
 
 It is deployed under account name `saleterminal` on the following
 EOSIO networks:
 
-* Jungle Testnet
-
 * Telos Testnet
 
-* WAX Testnet
-
-Deployment on production chains is coming soon.
+Deployment on other testnets and production chains is coming soon.
 
 
 ## Terminology and objects
@@ -110,6 +114,9 @@ The seller information is stored in two tables, both using Scope 0.
 
 * `website`: a URL to the seller's web site.
 
+* `tracking`: a Boolean flag that defines if post-sale item tracking
+  is needed.
+
 `sellercntrs` table contains variable information related to the
 seller's items:
 
@@ -122,6 +129,46 @@ seller's items:
 * `last_sale`: time stamp of the latest purchase.
 
 
+### Tracking table
+
+The tracking table is an auxiliary tool helping the seller keep track
+of their items.
+
+When the seller calls `claim` action and if `tracking` parameter is
+set to true for the seller, their items are automatically added to the
+tracking table with the state set to `paymntrcvd` and memo text set to
+"Payment received".
+
+Other states are up to the seller to define to match their accounting
+and shipping process.
+
+The `tracking` table stores the information in scope set to seller
+account, and primary key is the item ID from stock items table. Row
+attributes:
+
+* `itemid`: unique item identifier, copied from `stockitems` table;
+
+* `skuid`: SKU identifier in `skus` table;
+
+* `sold_on`: time point of payment;
+
+* `price`: selling price;
+
+* `buyer`: the buyer account;
+
+* `tracking_state`: state of the item;
+
+* `memo`: human readable description of the state or additional
+  information, such as shipment tracking number;
+
+* `updated_on`: timestamp of the latest state update;
+
+* `update_trxid`: transaction ID of the latest state update.
+
+
+
+
+
 
 ## Contract actions
 
@@ -132,29 +179,27 @@ use the SKU identifier in memo.
 
 All needed RAM in these actions is allocated from the seller's quota.
 
+### action: updseller
+
+Before the seller can list their items, they need to register in the
+contact. Later on, the parameters can be updated by calling this action
+again.
+
+```
+  ACTION updseller(name seller, string company, string website, bool tracking)
+```
+
+
 
 ### action: newsku
 
 The action creates a new SKU in contract memory. If `count` is
-positive, the action creates the stock items too. If the seller is
-new, a corresponding item is created in `sellerinfo` table with empty
-company and website strings. 
+positive, the action creates the stock items too.
 
 
 ```
   ACTION newsku(name seller, string sku, string description,
                 name tkcontract, asset price, uint32_t count)
-```
-
-
-### action: updseller
-
-This action lets the seller update their company and website. If the
-seller does not exist in the system, a corresponding entry is created
-in the contract memory.
-
-```
-  ACTION updseller(name seller, string company, string website)
 ```
 
 ### action: delseller
@@ -237,6 +282,27 @@ such as fungible or non-fungible token transfer.
 ```
   ACTION claim(name seller, uint32_t count)
 ```
+
+
+### action: updtracking
+
+The action updates the tracking state and memo for the specified sold
+items:
+
+```
+  ACTION updtracking(name seller, name newstate, string memo, vector<uint64_t> itemids)
+```
+
+### action: deltracking
+
+The action deletes the specified items from tracking table and releases RAM back to the seller.
+
+```
+  ACTION deltracking(name seller, vector<uint64_t> itemids)
+```
+
+
+
 
 
 ## Irreversibility oracle
