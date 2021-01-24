@@ -480,6 +480,7 @@ CONTRACT pos : public eosio::contract {
     sellerinforows _sellerinforows(_self, 0);
     auto selleritr = _sellerinforows.begin();
     while( count-- > 0 && selleritr != _sellerinforows.end() ) {
+
       stockitems _stockitems(_self, selleritr->seller.value);
       auto items_itr = _stockitems.begin();
       while( count-- > 0 && items_itr != _stockitems.end() ) {
@@ -487,7 +488,15 @@ CONTRACT pos : public eosio::contract {
         done_something = true;
       }
 
-      if( items_itr == _stockitems.end() ) {
+      trackingrows _trackingrows(_self, selleritr->seller.value);
+      auto track_iter = _trackingrows.begin();
+      while( count-- > 0 && track_iter != _trackingrows.end() ) {
+        track_iter = _trackingrows.erase(track_iter);
+        done_something = true;
+      }
+
+
+      if( items_itr == _stockitems.end() && track_iter == _trackingrows.end() ) {
         selleritr = _sellerinforows.erase(selleritr);
         done_something = true;
       }
