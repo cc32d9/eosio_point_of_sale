@@ -370,7 +370,7 @@ CONTRACT pos : public eosio::contract {
     require_auth(seller);
     sellerinforows _sellerinforows(_self, 0);
     auto info_itr = _sellerinforows.find(seller.value);
-    check(info_itr == _sellerinforows.end(), "Unknown seller");
+    check(info_itr != _sellerinforows.end(), "Unknown seller");
 
     trackingrows _trackingrows(_self, seller.value);
 
