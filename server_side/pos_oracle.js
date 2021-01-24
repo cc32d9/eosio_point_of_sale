@@ -32,7 +32,8 @@ const oracleacc   = config.get('oracleacc');
 const oraclekey   = config.get('oraclekey');
 
 const timer_keepalive = config.get('timer.keepalive');
-const timer_recheck = config.get('timer.recheck');
+const timer_poll = config.get('timer.poll');
+const timer_followup = config.get('timer.followup');
 const timer_irrev_variance = config.get('timer.irrev_variance');
 
 
@@ -46,8 +47,8 @@ console.log("Started POS oracle using " + url);
 var known_last_sale = 0;
 
 setInterval(keepaalive, timer_keepalive);
-setInterval(recheck, timer_recheck);
-recheck();
+setInterval(poll_changes, timer_poll);
+poll_changes();
 
 
 async function keepaalive() {
@@ -55,23 +56,40 @@ async function keepaalive() {
 }
 
 
-async function recheck() {
-    let last_irrev = await get_last_irrev();
+async function poll_changes() {
     let last_sale = await get_last_sale();
-    console.log("last_irrev: " + last_irrev + ", last_sale: " + last_sale);
-    
-    if( last_sale > known_last_sale && last_sale > last_irrev ) {
-        let data = await retrieve_irrev();
-        if( data.irrev_timestamp > last_irrev ) {
-            send_orairrev(data.irrev_block, data.irrev_timestamp);
-            if( last_sale > data.irrev_timestamp ) {
-                setTimeout(recheck, last_sale - data.irrev_timestamp + timer_irrev_variance);
-            }
-        }
+    console.log('known_last_sale: ' + known_last_sale + ', last_sale: ' + last_sale);
+    if( last_sale > known_last_sale ) {
+        updoracle(last_sale);
+        known_last_sale = last_sale;
+    }
+}
+
+
+async function updoracle(last_sale) {
+    if( ! last_sale ) {
+        last_sale = await get_last_sale();
     }
 
-    known_last_sale = last_sale;
+    let last_irrev = await get_last_irrev();
+    console.log("last_irrev: " + last_irrev + ", last_sale: " + last_sale);
+    let data = await retrieve_irrev();
+
+    if( data.irrev_timestamp > last_irrev && last_sale > last_irrev ) {
+        send_orairrev(data.irrev_block, data.irrev_timestamp);
+
+        if( last_sale > data.irrev_timestamp ) {
+            let newtimeout = last_sale - data.irrev_timestamp + timer_irrev_variance;
+            console.log('setting updoracle timeout: ' + newtimeout);
+            setTimeout(updoracle, newtimeout);
+        }
+        else {
+            console.log('scheduling updoracle follow-up in: ' + timer_followup);
+            setTimeout(updoracle, timer_followup);
+        }
+    }
 }
+
 
 
 async function get_last_sale() {
@@ -145,7 +163,7 @@ async function retrieve_irrev() {
             irrev_timestamp_string: irrev_timestamp_string,
             irrev_timestamp: irrev_timestamp};
 }
-            
+
 
 
 async function send_orairrev(irrev_block, irrev_timestamp) {
@@ -153,7 +171,7 @@ async function send_orairrev(irrev_block, irrev_timestamp) {
 
         let ts = new Date(irrev_timestamp);
         let tsstring = ts.toISOString().slice(0, -1); // cut the trailing Z from ISO string
-        
+
         const result = await api.transact(
             {
                 actions:
