@@ -7,11 +7,12 @@ tTcleos push action saleterminal setfee '["payoutfees11", "5"]' -p saleterminal
 
 
 
+tTcleos push action saleterminal updseller '["payoutpayer1", "Lorem", "https://www.lipsum.com/", true]' -p payoutpayer1
+# ok
+
 tTcleos push action saleterminal newsku '["payoutpayer1", "Chanel No. 5", "Chanel No. 5 was the first perfume launched by French couturier Gabrielle Coco Chanel in 1921. The scent formula for the fragrance was compounded by French-Russian chemist and perfumer Ernest Beaux. The design of its bottle has been an important part of the products allure. Coco Chanel was the first face of the fragrance, appearing in the advertisement published by Harpers Bazaar in 1937.", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
 # ok
 
-tTcleos push action saleterminal updseller '["payoutpayer1", "Lorem", "https://www.lipsum.com/"]' -p payoutpayer1
-$ ok
 
 
 tTcleos push action saleterminal newsku '["payoutpayer1", "Chanel No. 5", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
@@ -66,6 +67,8 @@ tTcleos push action saleterminal newsku '["payoutpayer1", "item100001", "blah bl
 tTcleos push action saleterminal newsku '["payoutpayer1", "item100002", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
 
 tTcleos push action saleterminal newsku '["payoutpayer1", "item100003", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
+
+tTcleos push action saleterminal updseller '["payoutpayer2", "Ipsum", "https://www.lipsum.com/", true]' -p payoutpayer2
 
 tTcleos push action saleterminal newsku '["payoutpayer2", "item200001", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer2
 
