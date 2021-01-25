@@ -1,18 +1,22 @@
 # EOSIO Point of Sale contract
 
 The goal of this project is to provide a base layer for all kinds of
-e-commerce and marketplaces. Anyone can list their products, define
-the prices in their preferred currency.
+e-commerce and marketplaces. Anyone can list their products, and
+define the prices in their preferred currency.
 
 The contract provides all on-chain means for the seller to be
 independent from any history services. The seller can track the status
 of their items and payments by querying the contract tables directly.
 
 The contract insists on exact amounts and memo text in incoming
-payments. Also once the payment becomes irreversible, the contract
-allows the buyer to claim the tokens. The seller also receives a detailed
+payments. Once the payment becomes irreversible, the contract allows
+the buyer to claim the tokens. The seller also receives a detailed
 receipt about every sold item, so the receipt action can trigger
 additional activity, such as sending an NFT token.
+
+The contract also prevents the buyer from paying twice by accident:
+the same SKU can only be bought by the same buyer after the first
+payment becomes irreversible and is claimed by the seller.
 
 The contract deducts 0.5% fee from the sales, to compensate for the
 infrastructure and development costs.
