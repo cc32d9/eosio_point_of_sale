@@ -472,6 +472,51 @@ CONTRACT pos : public eosio::contract {
   }
 
 
+  ACTION challenge(name challenger, uint64_t id, name account, checksum256 hash, uint32_t expire_seconds)
+  {
+    require_auth(challenger);
+    challenges _challenges(_self, 0);
+    check(_challenges.find(id) == _challenges.end(), "Duplicate ID");
+    check(is_account(account), "Account does not exist");
+
+    time_point now = current_time_point();
+    _challenges.emplace(challenger, [&]( auto& row ) {
+                                      row.id = id;
+                                      row.account = account;
+                                      row.challenge = hash;
+                                      row.responded = false;
+                                      row.expires_on = now + microseconds(expire_seconds * 1000000);
+                                    });
+
+    clean_expired_challenges(_challenges, now);
+  }
+
+
+
+  ACTION respond(uint64_t id, string response)
+  {
+    challenges _challenges(_self, 0);
+    auto ch_itr = _challenges.find(id);
+    check(ch_itr != _challenges.end(), "Cannot find the challenge");
+    require_auth(ch_itr->account);
+
+    checksum256 hash = sha256(response.data(), response.size());
+    check(hash == ch_itr->challenge, "Response does not match the challenge");
+
+    time_point now = current_time_point();
+    check(now < ch_itr->expires_on, "Challenge expired");
+
+    _challenges.modify( *ch_itr, same_payer, [&]( auto& row ) {
+                                               row.responded = true;
+                                               row.responded_on = now;
+                                               row.response_trxid = get_trxid();
+                                               row.expires_on += microseconds(600 * 1000000);
+                                             });
+
+    clean_expired_challenges(_challenges, now);
+  }
+
+
   ACTION wipeall(uint32_t count)
   {
     require_auth(_self);
@@ -494,7 +539,6 @@ CONTRACT pos : public eosio::contract {
         track_iter = _trackingrows.erase(track_iter);
         done_something = true;
       }
-
 
       if( items_itr == _stockitems.end() && track_iter == _trackingrows.end() ) {
         selleritr = _sellerinforows.erase(selleritr);
@@ -520,6 +564,13 @@ CONTRACT pos : public eosio::contract {
     auto ctr_itr = _sellercntrs.begin();
     while( count-- > 0 && ctr_itr != _sellercntrs.end() ) {
       ctr_itr = _sellercntrs.erase(ctr_itr);
+      done_something = true;
+    }
+
+    challenges _challenges(_self, 0);
+    auto ch_itr = _challenges.begin();
+    while( count-- > 0 && ch_itr != _challenges.end() ) {
+      ch_itr = _challenges.erase(ch_itr);
       done_something = true;
     }
 
@@ -674,6 +725,23 @@ CONTRACT pos : public eosio::contract {
     > trackingrows;
 
 
+  struct [[eosio::table("challenges")]] challenge_row {
+    uint64_t        id;
+    name            account;
+    checksum256     challenge;
+    bool            responded;
+    time_point      responded_on;
+    checksum256     response_trxid;
+    time_point      expires_on;
+    auto primary_key()const { return id; }
+    uint64_t get_expires_on()const { return expires_on.elapsed.count(); }
+  };
+
+  typedef eosio::multi_index<
+    name("challenges"), challenge_row,
+    indexed_by<name("expires"), const_mem_fun<challenge_row, uint64_t, &challenge_row::get_expires_on>>
+    > challenges;
+
 
   // properties table for keeping contract settings; scope=0
   struct [[eosio::table("props")]] prop {
@@ -780,6 +848,16 @@ CONTRACT pos : public eosio::contract {
                                 });
   }
 
+
+  void clean_expired_challenges(challenges& _challenges, time_point now)
+  {
+    auto idx = _challenges.get_index<name("expires")>();
+    auto itr = idx.begin();
+    int counter = 50;
+    while(counter-- > 0 && itr != idx.end() && itr->expires_on <= now) {
+      itr = idx.erase(itr);
+    }
+  }
 
 
   checksum256 get_trxid()

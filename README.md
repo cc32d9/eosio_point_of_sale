@@ -21,8 +21,10 @@ payment becomes irreversible and is claimed by the seller.
 The contract deducts 0.5% fee from the sales, to compensate for the
 infrastructure and development costs.
 
-Optionally the contract provides the seller a possibility to track the
-item status after the payment is received.
+In addition, the contract provides two functions for the the seller's
+convenience: a possibility to track the item status after the payment
+is received; and a possibility to challenge the user and verify that
+he or she controls a specific EOSIO account.
 
 
 It is deployed under account name `saleterminal` on the following
@@ -174,7 +176,7 @@ attributes:
 
 
 
-## Contract actions
+## Seller's contract actions
 
 The following actions are available for sellers. Anyone can register
 as a seller and start offering their goods. There are no actions for
@@ -306,6 +308,58 @@ The action deletes the specified items from tracking table and releases RAM back
 ```
 
 
+## Challenge and response
+
+Two actions, `challenge` and `respond` are designed for e-commerce
+website operators to verify that the logged-in user controls a
+specified EOSIO account.
+
+The website backend generates a random challenge string and a random
+64-bit identifier. It calls the `challenge` action and specifies
+SHA256 hash of the challenge string and the account name that needs to
+be verified. It also specifies the expiration time in seconds.
+
+Once the challenge is placed on chain, the website shows the challenge
+string to the logged-in user, and the user needs to send an `respond`
+action with a copy of the challenge string. The smart contract
+verifies that the response string matches the challenge hash.
+
+Once the verification is successful, the contract updates the entry in
+`challenges` table by setting `responded` to true, and extending the
+expiration time by 10 minutes. The website can check the status of the
+challenge by its ID.
+
+Both `challenge` and `respond` actions delete up to 50 expired
+challenges that were inserted previously.
+
+Actions and the table:
+
+```
+  ACTION challenge(name challenger, uint64_t id, name account, checksum256 hash, uint32_t expire_seconds);
+
+  ACTION respond(uint64_t id, string response);
+
+  struct [[eosio::table("challenges")]] challenge_row {
+    uint64_t        id;
+    name            account;
+    checksum256     challenge;
+    bool            responded;
+    time_point      responded_on;
+    checksum256     response_trxid;
+    time_point      expires_on;
+    auto primary_key()const { return id; }
+    uint64_t get_expires_on()const { return expires_on.elapsed.count(); }
+  };
+
+  typedef eosio::multi_index<
+    name("challenges"), challenge_row,
+    indexed_by<name("expires"), const_mem_fun<challenge_row, uint64_t, &challenge_row::get_expires_on>>
+    > challenges;
+```
+
+
+
+
 
 
 
@@ -313,14 +367,6 @@ The action deletes the specified items from tracking table and releases RAM back
 
 The oracle process runs on several independent servers, supplying the
 blockchain irreversibility timestamps to the contract.
-
-
-
-
-
-
-
-
 
 
 ## Copyright and License
