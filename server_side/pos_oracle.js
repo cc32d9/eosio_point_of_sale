@@ -93,72 +93,115 @@ async function updoracle(last_sale) {
 
 
 async function get_last_sale() {
-    let response = await fetch(url + '/v1/chain/get_table_rows', {
-        method: 'post',
-        body:    JSON.stringify({
-            json: 'true',
-            code: posacc,
-            scope: '0',
-            table: 'props',
-            index_position: '1',
-            key_type: 'name',
-            lower_bound: 'lastsale',
+    let ret = 0;
+    try {
+        let response = await fetch(url + '/v1/chain/get_table_rows', {
+            method: 'post',
+            body:    JSON.stringify({
+                json: 'true',
+                code: posacc,
+                scope: '0',
+                table: 'props',
+                index_position: '1',
+                key_type: 'name',
+                lower_bound: 'lastsale',
             upper_bound: 'lastsale',
-            limit: 1
-        }),
-        headers: { 'Content-Type': 'application/json' },
-    });
+                limit: 1
+            }),
+            headers: { 'Content-Type': 'application/json' },
+        });
 
-    let data = await response.json();
-    return (data.rows.length > 0) ? data.rows[0].val_uint/1000 : 0;
+        if( response.ok ) {
+            let data = await response.json();
+            if( data.rows.length > 0 ) {
+                ret = data.rows[0].val_uint/1000;
+            }
+        }
+        else {
+            console.error('HTTP error: ' + await response.text());
+        }        
+    } catch (e) {
+        console.error('ERROR: ' + e);
+    }
+    return ret;
 }
 
 
 async function get_last_irrev() {
-    let response = await fetch(url + '/v1/chain/get_table_rows', {
-        method: 'post',
-        body:    JSON.stringify({
-            json: 'true',
-            code: posacc,
-            scope: '0',
-            table: 'props',
-            index_position: '1',
-            key_type: 'name',
-            lower_bound: 'irrevtime',
-            upper_bound: 'irrevtime',
-            limit: 1
-        }),
-        headers: { 'Content-Type': 'application/json' },
-    });
+    let ret = 0;
+    try {
+        let response = await fetch(url + '/v1/chain/get_table_rows', {
+            method: 'post',
+            body:    JSON.stringify({
+                json: 'true',
+                code: posacc,
+                scope: '0',
+                table: 'props',
+                index_position: '1',
+                key_type: 'name',
+                lower_bound: 'irrevtime',
+                upper_bound: 'irrevtime',
+                limit: 1
+            }),
+            headers: { 'Content-Type': 'application/json' },
+        });
 
-    let data = await response.json();
-    return (data.rows.length > 0) ? data.rows[0].val_uint/1000 : 0;
+        if( response.ok ) {
+            let data = await response.json();
+            if( data.rows.length > 0 ) {
+                ret = data.rows[0].val_uint/1000;
+            }
+        }
+        else {
+            console.error('HTTP error: ' + await response.text());
+        }        
+    } catch (e) {
+        console.error('ERROR: ' + e);
+    }
+    return ret;
 }
 
 
 async function retrieve_irrev() {
-    let response = await fetch(url + '/v1/chain/get_info', {
-        method: 'post',
-        headers: { 'Content-Type': 'application/json' },
-    });
+    let irrev_block = 0;
+    let irrev_timestamp_string;
+    let irrev_timestamp = 0;
+    try {
+        let response = await fetch(url + '/v1/chain/get_info', {
+            method: 'post',
+            headers: { 'Content-Type': 'application/json' },
+        });
 
-    let data = await response.json();
-    let irrev_block = data.last_irreversible_block_num;
-    console.log('irrev_block: ' + irrev_block);
+        if( response.ok ) {
+            let data = await response.json();
+            irrev_block = data.last_irreversible_block_num;
+            console.log('irrev_block: ' + irrev_block);
 
-    response = await fetch(url + '/v1/chain/get_block', {
-        method: 'post',
-        body:    JSON.stringify({
-            block_num_or_id: irrev_block
-        }),
-        headers: { 'Content-Type': 'application/json' },
-    });
+            response = await fetch(url + '/v1/chain/get_block', {
+                method: 'post',
+                body:    JSON.stringify({
+                    block_num_or_id: irrev_block
+                }),
+                headers: { 'Content-Type': 'application/json' },
+            });
 
-    data = await response.json();
-    let irrev_timestamp_string = data.timestamp;
-    let irrev_timestamp = Date.parse(irrev_timestamp_string + 'Z');
-    console.log("irrev_timestamp: " + irrev_timestamp + " " + irrev_timestamp_string);
-
+            if( response.ok ) {
+                data = await response.json();
+                irrev_timestamp_string = data.timestamp;
+                irrev_timestamp = Date.parse(irrev_timestamp_string + 'Z');
+                console.log("irrev_timestamp: " + irrev_timestamp + " " + irrev_timestamp_string);
+            }
+            else {
+            console.error('HTTP error: ' + await response.text());
+            }        
+        }
+        else {
+            console.error('HTTP error: ' + await response.text());
+        }        
+    } catch (e) {
+        console.error('ERROR: ' + e);
+    }
+    
     return {irrev_block: irrev_block,
             irrev_timestamp_string: irrev_timestamp_string,
             irrev_timestamp: irrev_timestamp};
@@ -168,7 +211,6 @@ async function retrieve_irrev() {
 
 async function send_orairrev(irrev_block, irrev_timestamp) {
     try {
-
         let ts = new Date(irrev_timestamp);
         let tsstring = ts.toISOString().slice(0, -1); // cut the trailing Z from ISO string
 
@@ -198,7 +240,6 @@ async function send_orairrev(irrev_block, irrev_timestamp) {
     } catch (e) {
         console.error('ERROR: ' + e);
     }
-
 }
 
 
