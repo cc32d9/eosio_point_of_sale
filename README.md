@@ -32,7 +32,11 @@ EOSIO networks:
 
 * Telos Testnet
 
-Deployment on other testnets and production chains is coming soon.
+* WAX Testnet
+
+* Jungle Testnet
+
+Deployment on production chains is coming soon.
 
 
 ## Terminology and objects

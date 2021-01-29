@@ -160,3 +160,31 @@ tTcleos get currency balance ponytokenxxx saleterminal PONY
 tTcleos push action saleterminal claim '["payoutpayer2", "10"]' -p payoutpayer2
 # error: No sold items available for claims
 
+
+tTcleos get table --limit=30 saleterminal payoutpayer2 tracking
+
+tTcleos push action saleterminal updtracking '["payoutrcpt13", "shipped", "Tracking No AA1234567789BB", [11,20]]' -p payoutrcpt13
+# error: Unknown seller
+
+tTcleos push action saleterminal updtracking '["payoutpayer2", "shipped", "Tracking No AA1234567789BB", [11,20]]' -p payoutrcpt13
+# error: missing authority of payoutpayer2
+
+tTcleos push action saleterminal updtracking '["payoutpayer2", "shipped", "Tracking No AA1234567789BB", [11,20]]' -p payoutpayer2
+# ok
+
+tTcleos get table --limit=30 saleterminal payoutpayer2 tracking
+
+tTcleos push action saleterminal updtracking '["payoutpayer2", "delivered", "Delivered", [11]]' -p payoutpayer2
+
+tTcleos get table --limit=30 saleterminal payoutpayer2 tracking
+
+
+tTcleos push action saleterminal deltracking '["payoutpayer2", [11,20]]' -p payoutrcpt13
+# error: missing authority of payoutpayer2
+
+tTcleos push action saleterminal deltracking '["payoutpayer2", [11,20]]' -p payoutpayer2
+
+tTcleos get table --limit=30 saleterminal payoutpayer2 tracking
+
+tTcleos push action saleterminal deltracking '["payoutpayer2", [11,20]]' -p payoutpayer2
+# error: Cannot find tracking item id: 11

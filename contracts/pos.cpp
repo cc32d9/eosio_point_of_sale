@@ -439,6 +439,10 @@ CONTRACT pos : public eosio::contract {
   ACTION updtracking(name seller, name newstate, string memo, vector<uint64_t> itemids)
   {
     require_auth(seller);
+    sellercntrs _sellercntrs(_self, 0);
+    auto cntrs_itr = _sellercntrs.find(seller.value);
+    check(cntrs_itr != _sellercntrs.end(), "Unknown seller");
+
     checksum256 trxid = get_trxid();
     time_point now = current_time_point();
     trackingrows _trackingrows(_self, seller.value);
@@ -461,6 +465,10 @@ CONTRACT pos : public eosio::contract {
   ACTION deltracking(name seller, vector<uint64_t> itemids)
   {
     require_auth(seller);
+    sellercntrs _sellercntrs(_self, 0);
+    auto cntrs_itr = _sellercntrs.find(seller.value);
+    check(cntrs_itr != _sellercntrs.end(), "Unknown seller");
+
     trackingrows _trackingrows(_self, seller.value);
 
     for( uint64_t itemid: itemids ) {
