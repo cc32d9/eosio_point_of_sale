@@ -62,6 +62,9 @@ tTcleos push action saleterminal delseller '["payoutpayer1"]' -p payoutpayer1
 # ok
 
 
+tTcleos push action saleterminal updseller '["payoutpayer1", "Lorem", "https://www.lipsum.com/", true]' -p payoutpayer1
+# ok
+
 tTcleos push action saleterminal newsku '["payoutpayer1", "item100001", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1
 
 tTcleos push action saleterminal newsku '["payoutpayer1", "item100002", "blah blah", "ponytokenxxx", "1.0000 PONY", 10]' -p payoutpayer1

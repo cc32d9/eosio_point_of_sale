@@ -55,10 +55,15 @@ async function keepaalive() {
     console.log('keepalive');
 }
 
+var last_poll_msg = '';
 
 async function poll_changes() {
     let last_sale = await get_last_sale();
-    console.log('known_last_sale: ' + known_last_sale + ', last_sale: ' + last_sale);
+    let new_poll_msg = 'known_last_sale: ' + known_last_sale + ', last_sale: ' + last_sale;
+    if( new_poll_msg != last_poll_msg ) {
+        console.log(new_poll_msg);
+        last_poll_msg = new_poll_msg;
+    }
     if( last_sale > known_last_sale ) {
         updoracle(last_sale);
         known_last_sale = last_sale;
