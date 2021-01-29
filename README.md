@@ -10,7 +10,7 @@ of their items and payments by querying the contract tables directly.
 
 The contract insists on exact amounts and memo text in incoming
 payments. Once the payment becomes irreversible, the contract allows
-the buyer to claim the tokens. The seller also receives a detailed
+the seller to claim the tokens. The seller also receives a detailed
 receipt about every sold item, so the receipt action can trigger
 additional activity, such as sending an NFT token.
 
