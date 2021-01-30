@@ -28,15 +28,22 @@ he or she controls a specific EOSIO account.
 
 
 It is deployed under account name `saleterminal` on the following
-EOSIO networks:
+production EOSIO networks:
 
-* Telos Testnet
+* [EOS](https://bloks.io/account/saleterminal)
 
-* WAX Testnet
+* [Telos](https://telos.bloks.io/account/saleterminal)
 
-* Jungle Testnet
+* [WAX](https://wax.bloks.io/account/saleterminal)
 
-Deployment on production chains is coming soon.
+Also on a number of test networks:
+
+* [Telos Testnet](https://telos-test.bloks.io/account/saleterminal)
+
+* [WAX Testnet](https://wax-test.bloks.io/account/saleterminal)
+
+* [Jungle3 Testnet](https://jungle3.bloks.io/account/saleterminal)
+
 
 Telegram group for discussions: https://t.me/eosio4ecommerce
 
