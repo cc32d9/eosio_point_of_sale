@@ -188,3 +188,40 @@ tTcleos get table --limit=30 saleterminal payoutpayer2 tracking
 
 tTcleos push action saleterminal deltracking '["payoutpayer2", [11,20]]' -p payoutpayer2
 # error: Cannot find tracking item id: 11
+
+
+#### challenge-response
+
+echo -n "you were never good with horses" | sha256sum 
+00cd7bdc4bfd4c7a3c8d89b1ac9866c5611dd6dbecca734312292c4bcd2000b1  -
+
+tTcleos push action saleterminal challenge '["payoutpayer2", 64646, "payoutrcpt13", "00cd7bdc4bfd4c7a3c8d89b1ac9866c5611dd6dbecca734312292c4bcd2000b1", 60]' -p payoutpayer2
+
+tTcleos push action saleterminal respond '[64646, "you were never good with horses"]' -p payoutpayer2
+# error: missing authority of payoutrcpt13
+
+tTcleos push action saleterminal respond '[64646, "you were never good with horses"]' -p payoutrcpt13
+# error: Challenge expired
+
+
+tTcleos push action saleterminal challenge '["payoutpayer2", 64647, "payoutrcpt13", "00cd7bdc4bfd4c7a3c8d89b1ac9866c5611dd6dbecca734312292c4bcd2000b1", 60]' -p payoutpayer2
+
+tTcleos push action saleterminal respond '[64647, "you were never good with horses"]' -p payoutrcpt13
+
+tTcleos get table --lower=64647 --upper=64647 --limit=1  saleterminal 0 challenges
+{
+  "rows": [{
+      "id": 64647,
+      "account": "payoutrcpt13",
+      "challenge": "00cd7bdc4bfd4c7a3c8d89b1ac9866c5611dd6dbecca734312292c4bcd2000b1",
+      "responded": 1,
+      "responded_on": "2021-01-30T00:05:17.500",
+      "response_trxid": "df7839b43de32d0f2e5d9dc147786f80fe74248267d985d0c63e24363b38d904",
+      "expires_on": "2021-01-30T00:16:05.500"
+    }
+  ],
+  "more": false,
+  "next_key": ""
+}
+
+
