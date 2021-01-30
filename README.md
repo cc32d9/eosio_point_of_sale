@@ -47,6 +47,10 @@ Also on a number of test networks:
 
 Telegram group for discussions: https://t.me/eosio4ecommerce
 
+DISCLAIMER: Content moderation, seller reputation, and dispute
+resolution are left out of the smart contract scope. It is up to the
+organizers of marketplaces to take care of buyer protection.
+
 
 ## Terminology and objects
 
