@@ -200,6 +200,9 @@ tTcleos push action saleterminal challenge '["payoutpayer2", 64646, "payoutrcpt1
 tTcleos push action saleterminal respond '[64646, "you were never good with horses"]' -p payoutpayer2
 # error: missing authority of payoutrcpt13
 
+tTcleos push action saleterminal respond '[64646, "you were never good with horses."]' -p payoutrcpt13
+# error: Response does not match the challenge
+
 tTcleos push action saleterminal respond '[64646, "you were never good with horses"]' -p payoutrcpt13
 # error: Challenge expired
 
