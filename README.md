@@ -38,6 +38,8 @@ EOSIO networks:
 
 Deployment on production chains is coming soon.
 
+Telegram group for discussions: https://t.me/eosio4ecommerce
+
 
 ## Terminology and objects
 
